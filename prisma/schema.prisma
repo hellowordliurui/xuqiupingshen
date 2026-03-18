@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  secondmeUserId String   @unique @map("secondme_user_id")
+  accessToken    String   @map("access_token")
+  refreshToken   String   @map("refresh_token")
+  tokenExpiresAt DateTime @map("token_expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  sessions       Session[]
+  hostedProjects Project[] @relation("ProjectHost")
+  slots          Slot[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Project {
+  id                  String          @id @default(cuid())
+  hostUserId          String          @map("host_user_id")
+  title               String
+  goal                String
+  category            String          // tech | biz | design | content | social
+  stage               String          @default("debating") // debating | finalizing
+  reviewPhase         String          @default("spontaneous") @map("review_phase") // spontaneous | zhihu_validation | blueprint
+  controversyPoints   String?         @map("controversy_points") // JSON 数组，争议点/关键词，供知乎检索
+  reportDeadlySpots   String?        @map("report_deadly_spots") // 刘看山报告：致命死角
+  reportPitfalls      String?        @map("report_pitfalls") // 避坑指南
+  reportPath          String?        @map("report_path") // 修正路径
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  host                User            @relation("ProjectHost", fields: [hostUserId], references: [id], onDelete: Cascade)
+  slots               Slot[]
+  messages            DebateMessage[]
+
+  @@map("projects")
+}
+
+model DebateMessage {
+  id          String   @id @default(cuid())
+  projectId   String   @map("project_id")
+  kind        String   // human | agent | system（真人发言 / 分身或 Agent / 系统注入如知乎证据、刘看山）
+  senderLabel String   @map("sender_label") // 展示用：发起者、架构师、刘看山、知乎·证据 等
+  content     String
+  userId      String?  @map("user_id") // 真人时关联用户
+  slotRole    String?  @map("slot_role") // 对应席位角色，便于展示
+  createdAt   DateTime @default(now()) @map("created_at")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("debate_messages")
+}
+
+model Slot {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  role      String   // host | 架构师 | 算法 | 设计师 | 运营 | 产品 | 财务 | 法务 | 数据 | FE
+  type      String   @default("agent") // human | agent
+  userId    String?  @map("user_id") // null = 空缺席位
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, role])
+  @@map("slots")
+}

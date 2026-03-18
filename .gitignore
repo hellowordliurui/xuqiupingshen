@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next
+.next/
+out/
+
+# Env (do not commit secrets)
+.env
+.env*.local
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Debug / IDE
+*.log
+.DS_Store
+.idea
+.vscode

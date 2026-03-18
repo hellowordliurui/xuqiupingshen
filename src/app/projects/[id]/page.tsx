@@ -319,7 +319,7 @@ export default function ProjectDetailPage() {
 
       {/* 阶段操作：进入实证 / 拉取知乎 / 生成蓝图 */}
       <PhaseActions
-        projectId={id}
+        projectId={card.id}
         reviewPhase={card.reviewPhase}
         canSend={!!card.currentUserInProject}
         onDone={refreshProject}
@@ -327,7 +327,7 @@ export default function ProjectDetailPage() {
 
       {/* 讨论记录区域 */}
       <DiscussionSection
-        projectId={id}
+        projectId={card.id}
         messages={messages}
         canSend={!!card.currentUserInProject}
         onSent={refreshProject}

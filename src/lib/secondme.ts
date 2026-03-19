@@ -79,3 +79,66 @@ export async function secondmeApi<T>(
   const json = (await res.json()) as { code: number; data: T; message?: string };
   return { code: json.code, data: json.data };
 }
+
+/**
+ * 以用户 AI 分身进行对话，读流式响应并返回完整回复文本。
+ * 文档：POST /api/secondme/chat/stream，权限 scope: chat
+ */
+export async function secondmeChat(
+  accessToken: string,
+  message: string,
+  options?: { systemPrompt?: string }
+): Promise<string> {
+  const url = `${SECONDME.apiBaseUrl()}/api/secondme/chat/stream`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message,
+      systemPrompt: options?.systemPrompt,
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Second Me chat failed ${res.status}: ${t.slice(0, 300)}`);
+  }
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("text/event-stream")) {
+    const t = await res.text();
+    throw new Error(`Expected SSE, got: ${t.slice(0, 200)}`);
+  }
+  const stream = res.body;
+  if (!stream) throw new Error("No response body");
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let full = "";
+  let buffer = "";
+  try {
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        const payload = line.slice(6).trim();
+        if (payload === "[DONE]") return full.trim();
+        try {
+          const j = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: string } }> };
+          const content = j.choices?.[0]?.delta?.content;
+          if (typeof content === "string") full += content;
+        } catch {
+          // ignore non-JSON lines
+        }
+      }
+    }
+  }
+  } finally {
+    reader.releaseLock();
+  }
+  return full.trim();
+}

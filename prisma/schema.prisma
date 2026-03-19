@@ -11,6 +11,7 @@ datasource db {
 model User {
   id             String   @id @default(cuid())
   secondmeUserId String   @unique @map("secondme_user_id")
+  displayName    String?  @map("display_name") // 登录显示名（Second Me name/route），用于讨论与席位展示
   accessToken    String   @map("access_token")
   refreshToken   String   @map("refresh_token")
   tokenExpiresAt DateTime @map("token_expires_at")

@@ -81,6 +81,7 @@ export function LaunchPad({ onSuccess }: LaunchPadProps) {
             className="w-full min-h-[100px] resize-y rounded-lg border border-zhihu-thin bg-white/80 px-4 py-3 text-sm text-geek-gray placeholder:text-geek-gray-light focus:border-zhihu-blue focus:outline-none focus:ring-1 focus:ring-zhihu-blue/30"
           />
         </div>
+        <p className="text-xs text-geek-gray-light">创建后将自动以发起人身份生成第一条讨论（标题 + 目标）</p>
         {error && (
           <p className="text-sm text-red-600">{error}</p>
         )}

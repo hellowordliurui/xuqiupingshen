@@ -10,6 +10,8 @@ interface DebateCardProps {
   onJoin?: () => void;
   /** 详情页等场景下只展示信息，不展示底部操作按钮 */
   compact?: boolean;
+  /** 当前登录用户名字，发起人席会优先展示（当 isCurrentUserHost 时） */
+  currentUserName?: string | null;
 }
 
 function roleLabel(role: string) {
@@ -36,20 +38,26 @@ function SeatCard({
   role,
   filled,
   isHost,
+  displayName,
 }: {
   role: string;
   filled: boolean;
   isHost?: boolean;
+  /** 该席位用户的登录显示名，与讨论记录一致 */
+  displayName?: string | null;
 }) {
-  const label = roleLabel(role);
   const dotClass = roleDotColor[role] ?? "bg-zhihu-blue";
+  // 大字：优先显示用户登录名，无则发起者显示「发起者」、其他显示「用户匿名」，空位显示「空位」
+  const titleLabel = !filled ? "空位" : (displayName?.trim() || (isHost ? roleLabel(role) : "用户匿名"));
+  // 小字：已加入显示「已加入」，空位显示「Waiting...」
+  const subLabel = filled ? "已加入" : "Waiting...";
 
   if (!filled) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-white/80 py-4 px-2 shadow-sm">
         <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-400 text-lg leading-none">+</span>
-        <p className="text-center text-sm font-medium text-geek-gray">期待{label}</p>
-        <p className="text-center text-xs text-geek-gray-light">Waiting...</p>
+        <p className="text-center text-sm font-medium text-geek-gray">{titleLabel}</p>
+        <p className="text-center text-xs text-geek-gray-light">{subLabel}</p>
       </div>
     );
   }
@@ -60,15 +68,15 @@ function SeatCard({
       <span className="mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-geek-gray text-xs font-medium">
         {isHost ? "主" : "专"}
       </span>
-      <p className="text-center text-sm font-semibold text-geek-gray">{label}</p>
-      <p className="text-center text-xs text-geek-gray-light">
-        {isHost ? "Host 主持人" : "Contributor 撰稿人"}
+      <p className="text-center text-sm font-semibold text-geek-gray">{titleLabel}</p>
+      <p className="text-center text-xs text-geek-gray-light truncate w-full" title={subLabel}>
+        {subLabel}
       </p>
     </div>
   );
 }
 
-export function DebateCard({ card, onJoin, compact }: DebateCardProps) {
+export function DebateCard({ card, onJoin, compact, currentUserName }: DebateCardProps) {
   const filledCount = card.slots.filter((s) => s.filled).length;
   const total = card.slots.length;
   const statusText = card.isFull
@@ -136,6 +144,7 @@ export function DebateCard({ card, onJoin, compact }: DebateCardProps) {
             role={slot.role}
             filled={slot.filled}
             isHost={slot.role === "host"}
+            displayName={slot.displayName}
           />
         ))}
       </div>

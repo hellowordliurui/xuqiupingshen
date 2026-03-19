@@ -55,20 +55,27 @@ export async function GET(request: NextRequest) {
     const userInfoRes = await fetch(`${apiBase}/api/secondme/user/info`, {
       headers: { Authorization: `Bearer ${tokens.accessToken}` },
     });
-    const userInfoJson = (await userInfoRes.json()) as { code: number; data?: { userId: string } };
-    const secondmeUserId = userInfoJson.code === 0 && userInfoJson.data?.userId
-      ? String(userInfoJson.data.userId)
-      : "unknown";
+    const userInfoJson = (await userInfoRes.json()) as {
+      code: number;
+      data?: { userId?: string; name?: string; route?: string };
+    };
+    const data = userInfoJson.code === 0 ? userInfoJson.data : undefined;
+    const secondmeUserId = data?.userId ? String(data.userId) : "unknown";
+    const name = typeof data?.name === "string" ? data.name.trim() : "";
+    const route = typeof data?.route === "string" ? data.route : "";
+    const displayName = name || route || (data?.userId ? `用户${String(data.userId).slice(0, 8)}` : null);
 
     const user = await prisma.user.upsert({
       where: { secondmeUserId },
       create: {
         secondmeUserId,
+        displayName: displayName || undefined,
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         tokenExpiresAt: expiresAt,
       },
       update: {
+        ...(displayName != null && { displayName }),
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         tokenExpiresAt: expiresAt,

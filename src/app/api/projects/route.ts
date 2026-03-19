@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { getSession, getAccessTokenForUser } from "@/lib/auth";
 import { toDebateCard } from "@/lib/arena";
 import { roleDisplayLabels } from "@/types/arena";
+import { runIntentScan } from "@/lib/intent-detection";
+import { doAdvanceToValidation } from "@/lib/advance-to-validation";
+import { doFetchZhihuEvidence } from "@/lib/fetch-zhihu-evidence";
+import { doGenerateBlueprint } from "@/lib/generate-blueprint";
+import { secondmeChat } from "@/lib/secondme";
 
 const MAX_SLOTS = 5;
 const ROLES_ALLOWED: string[] = ["host", "架构师", "算法", "设计师", "运营", "产品", "财务", "法务", "数据", "FE"];
+/** 同一用户连续发言次数上限，超过且无人回复则不再允许发言 */
+const MAX_CONSECUTIVE_SELF = 3;
+const RECENT_MESSAGES_FOR_AVATAR = 25;
 
 /** 我的项目或全部：GET /api/projects?my=1 仅本人 */
 export async function GET(request: NextRequest) {
@@ -31,6 +39,24 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "desc" },
       include: { slots: true },
     });
+    const userIds = new Set<string>();
+    list.forEach((p) => {
+      userIds.add(p.hostUserId);
+      p.slots.forEach((s) => { if (s.userId) userIds.add(s.userId); });
+    });
+    let displayNameByUserId = new Map<string, string | null>();
+    if (userIds.size > 0) {
+      try {
+        const users = await prisma.user.findMany({
+          where: { id: { in: [...userIds] } },
+          select: { id: true, displayName: true },
+        });
+        displayNameByUserId = new Map(users.map((u) => [u.id, (u as { displayName?: string | null }).displayName?.trim() || null]));
+      } catch {
+        // displayName 列可能尚未迁移
+      }
+    }
+
     const data = list.map((p) =>
       toDebateCard(
         {
@@ -40,7 +66,12 @@ export async function GET(request: NextRequest) {
           category: p.category,
           stage: p.stage,
           hostUserId: p.hostUserId,
-          slots: p.slots.map((s) => ({ role: s.role, type: s.type, userId: s.userId })),
+          slots: p.slots.map((s) => ({
+            role: s.role,
+            type: s.type,
+            userId: s.userId,
+            displayName: s.userId ? displayNameByUserId.get(s.userId) ?? null : null,
+          })),
         },
         session?.id
       )
@@ -57,17 +88,17 @@ export async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ code: 401, message: "未登录" }, { status: 401 });
 
-  let body: { title?: string; goal?: string; category?: string; roles?: string[]; projectId?: string; content?: string };
+  let body: { title?: string; goal?: string; category?: string; roles?: string[]; projectId?: string; content?: string; initialDiscussion?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ code: 400, message: "无效 JSON" }, { status: 400 });
   }
 
-  // 发讨论消息：body 含 projectId + content，且无 title（避免与创建项目冲突）
+  // 发讨论消息：body 含 projectId，content 为可选发言方向；无 title 表示非创建项目。发言内容由 Second Me 分身生成。
   const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
-  const content = typeof body.content === "string" ? body.content.trim() : "";
-  if (projectId && content && !body.title) {
+  const direction = typeof body.content === "string" ? body.content.trim() : "";
+  if (projectId && !body.title) {
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: { slots: true },
@@ -80,7 +111,52 @@ export async function POST(request: NextRequest) {
     }
     const slotRole = isHost ? "host" : (mySlot!.role as string);
     const senderLabel = roleDisplayLabels[slotRole] ?? slotRole;
-    // PrismaClient 在 generate 后包含 debateMessage；若 IDE 报错可重启 TS 服务或重新 prisma generate
+
+    const allMessages = await prisma.debateMessage.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "asc" },
+    });
+    let consecutiveSelf = 0;
+    for (let i = allMessages.length - 1; i >= 0; i--) {
+      if (allMessages[i].userId === session.id) consecutiveSelf++;
+      else break;
+    }
+    if (consecutiveSelf >= MAX_CONSECUTIVE_SELF) {
+      return NextResponse.json(
+        { code: 400, message: "您已连续发言 " + MAX_CONSECUTIVE_SELF + " 次，请等待他人回复后再发言" },
+        { status: 400 }
+      );
+    }
+
+    const accessToken = await getAccessTokenForUser(session.id);
+    if (!accessToken) {
+      return NextResponse.json(
+        { code: 403, message: "需要 Second Me 分身权限才能发言，请重新登录并授权「聊天」权限" },
+        { status: 403 }
+      );
+    }
+
+    const recent = allMessages.slice(-RECENT_MESSAGES_FOR_AVATAR);
+    const contextLines = recent.map((m) => `【${m.senderLabel}】${m.content}`).join("\n");
+    const userPrompt =
+      `当前讨论记录：\n${contextLines || "（暂无）"}\n\n需求：${project.title}\n目标：${project.goal}\n\n` +
+      (direction
+        ? `请根据以上讨论，按用户给出的发言方向回复一句：${direction}`
+        : "请以你的身份根据当前讨论继续发言，一句即可。");
+    const systemPrompt = `你正在一场需求评审讨论中，你的角色是「${senderLabel}」。请用你的身份和性格，根据当前讨论内容回复一句（可表态、质疑或建议）。不要复述需求原文，语气自然。`;
+
+    let avatarContent: string;
+    try {
+      avatarContent = await secondmeChat(accessToken, userPrompt, { systemPrompt });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json(
+        { code: 502, message: "分身生成失败，请稍后重试。若持续失败请确认已授权 Second Me「聊天」权限并重新登录。" + (msg ? " " + msg.slice(0, 80) : "") },
+        { status: 502 }
+      );
+    }
+    if (!avatarContent) avatarContent = "（分身未返回内容）";
+
     const message = await (
       prisma as typeof prisma & { debateMessage: { create: (args: { data: Record<string, unknown> }) => Promise<{ id: string; kind: string; senderLabel: string; content: string; slotRole: string | null; createdAt: Date }> } }
     ).debateMessage.create({
@@ -88,11 +164,54 @@ export async function POST(request: NextRequest) {
         projectId,
         kind: "human",
         senderLabel,
-        content,
+        content: avatarContent,
         userId: session.id,
         slotRole,
       },
     });
+
+    // 自发讨论阶段：发言后做一次意图扫描；若触发吹哨则自动执行刘看山进入实证
+    let intentCheck: { shouldTrigger: boolean; triggeredBy: string[]; roundCount: number; suggestedScript?: string; suggestedKeywords?: string[] } | undefined;
+    let advancedToValidation = false;
+    const phase = project.reviewPhase ?? "spontaneous";
+    if (phase === "spontaneous") {
+      const allMessagesForScan = await prisma.debateMessage.findMany({
+        where: { projectId },
+        orderBy: { createdAt: "asc" },
+      });
+      const humanOrAgent = allMessagesForScan.filter((m) => m.kind === "human" || m.kind === "agent");
+      const scanMessages = humanOrAgent.map((m) => ({ senderLabel: m.senderLabel, content: m.content, kind: m.kind }));
+      try {
+        const result = await runIntentScan(scanMessages, humanOrAgent.length);
+        intentCheck = {
+          shouldTrigger: result.shouldTrigger,
+          triggeredBy: result.triggeredBy,
+          roundCount: result.roundCount,
+          suggestedScript: result.suggestedScript,
+          suggestedKeywords: result.suggestedKeywords,
+        };
+        if (result.shouldTrigger) {
+          await doAdvanceToValidation(projectId, {
+            suggestedScript: result.suggestedScript,
+            suggestedKeywords: result.suggestedKeywords,
+          });
+          advancedToValidation = true;
+          try {
+            await doFetchZhihuEvidence(projectId);
+            try {
+              await doGenerateBlueprint(projectId);
+            } catch {
+              // MiniMax 未配置或生成失败不影响已进入实证
+            }
+          } catch {
+            // 知乎未配置或拉取失败不影响已进入实证
+          }
+        }
+      } catch {
+        // 意图扫描或自动进入实证失败不影响发消息
+      }
+    }
+
     return NextResponse.json({
       code: 0,
       data: {
@@ -102,8 +221,10 @@ export async function POST(request: NextRequest) {
         content: message.content,
         slotRole: message.slotRole ?? undefined,
         createdAt: message.createdAt.toISOString(),
+        ...(intentCheck && { intentCheck }),
+        ...(advancedToValidation && { advancedToValidation: true }),
       },
-      message: "已发送",
+      message: advancedToValidation ? "已发送，刘看山已自动介入并进入实证环节" : "已发送",
     });
   }
 
@@ -133,6 +254,8 @@ export async function POST(request: NextRequest) {
         ...roleList.map((role) => ({ projectId: project.id, role, type: "agent" })),
       ],
     });
+
+    // 发起者作为一方，首次「进入」项目页时由分身发言（见 POST /api/projects/[id]/enter），此处不再自动写第一条消息
 
     const withSlots = await prisma.project.findUnique({
       where: { id: project.id },

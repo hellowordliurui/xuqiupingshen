@@ -10,6 +10,7 @@ export default function MyProjectsPage() {
   const [list, setList] = useState<DebateCardType[]>([]);
   const [loading, setLoading] = useState(true);
   const [unauth, setUnauth] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,6 +35,19 @@ export default function MyProjectsPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/auth/session", { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data?.user) return;
+        return fetch("/api/user/info", { credentials: "include" }).then((r) => r.json());
+      })
+      .then((info) => {
+        if (info?.code === 0 && info?.data?.name != null) setCurrentUserName(info.data.name);
+      })
+      .catch(() => {});
   }, []);
 
   const refresh = async () => {
@@ -95,7 +109,7 @@ export default function MyProjectsPage() {
       {!unauth && !loading && list.length > 0 && (
         <div className="flex flex-col gap-4">
           {list.map((card) => (
-            <DebateCard key={card.id} card={card} onJoin={refresh} />
+            <DebateCard key={card.id} card={card} onJoin={refresh} currentUserName={currentUserName} />
           ))}
         </div>
       )}

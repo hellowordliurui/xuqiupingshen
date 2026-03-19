@@ -75,7 +75,7 @@ function NavInner() {
               <circle cx="7" cy="17" r="2" fill="currentColor" />
             </svg>
           </span>
-          <span className="text-xl font-bold text-gray-900">杠精评审团</span>
+          <span className="text-xl font-bold text-gray-900">杠精需求评审团</span>
         </Link>
         <div className="flex items-center gap-3">
           {user === undefined ? (
@@ -136,7 +136,7 @@ function NavFallback() {
               <circle cx="7" cy="17" r="2" fill="currentColor" />
             </svg>
           </span>
-          <span className="text-xl font-bold text-gray-900">杠精评审团</span>
+          <span className="text-xl font-bold text-gray-900">杠精需求评审团</span>
         </Link>
         <div className="flex items-center gap-3">
           <span className="h-9 w-9 rounded-full bg-gray-100" aria-hidden />

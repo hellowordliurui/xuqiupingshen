@@ -38,6 +38,8 @@ export interface Slot {
   role: SlotRole;
   type: "human" | "agent";
   filled: boolean;
+  /** 该席位用户的登录显示名（与讨论记录一致） */
+  displayName?: string | null;
 }
 
 export type DebateStage = "debating" | "finalizing";
@@ -67,6 +69,8 @@ export interface DebateCard {
   missingRoles?: SlotRole[];
   /** 当前登录用户是否已在本项目中（发起者或任一席位） */
   currentUserInProject?: boolean;
+  /** 当前登录用户是否为本项目发起人（用于展示发起人名字） */
+  isCurrentUserHost?: boolean;
   /** 评审阶段（详情页用） */
   reviewPhase?: ReviewPhase;
   /** 争议点/关键词（进入实证后由 LLM 抽取） */

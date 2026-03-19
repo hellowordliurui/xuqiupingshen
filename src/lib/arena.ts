@@ -34,7 +34,7 @@ export function toDebateCard(
     category: string;
     stage: string;
     hostUserId: string;
-    slots: { role: string; type: string; userId: string | null }[];
+    slots: { role: string; type: string; userId: string | null; displayName?: string | null }[];
   },
   currentUserId?: string | null
 ): DebateCard {
@@ -44,12 +44,14 @@ export function toDebateCard(
     role: s.role as SlotRole,
     type: (s.type === "human" ? "human" : "agent") as "human" | "agent",
     filled: !!s.userId,
+    displayName: s.displayName ?? undefined,
   }));
   const missingRoles = p.slots.filter((s) => !s.userId).map((s) => s.role as SlotRole);
   const isFull = slots.every((s) => s.filled);
   const currentUserInProject =
     !!currentUserId &&
     (p.hostUserId === currentUserId || p.slots.some((s) => s.userId === currentUserId));
+  const isCurrentUserHost = !!currentUserId && p.hostUserId === currentUserId;
   return {
     id: p.id,
     category,
@@ -60,5 +62,6 @@ export function toDebateCard(
     stage,
     missingRoles: missingRoles.length ? missingRoles : undefined,
     currentUserInProject: currentUserInProject || undefined,
+    isCurrentUserHost: isCurrentUserHost || undefined,
   };
 }

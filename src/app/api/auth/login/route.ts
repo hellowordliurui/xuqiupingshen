@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       redirect_uri: redirectUri,
       response_type: "code",
       state,
-      scope: "user.info",
+      scope: "user.info chat",
     });
     const url = `${SECONDME.oauthUrl()}?${params.toString()}`;
     return NextResponse.redirect(url);

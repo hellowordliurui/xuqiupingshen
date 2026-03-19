@@ -14,22 +14,25 @@ if (!process.env.DATABASE_DIRECT_URL && process.env.DATABASE_URL) {
 
 const prisma = new PrismaClient();
 
+// 与后端 POST /api/projects 逻辑一致：第一条为发起者的「发起讨论内容」（human、发起者、slotRole: host）
 const PROJECT = {
   title: "习惯打卡小程序 MVP",
   goal: "一个月内上线一款帮用户记录每日习惯并打卡的小程序，验证留存与日活。",
   category: "tech",
   stage: "debating",
+  reviewPhase: "spontaneous",
   roles: ["架构师", "产品", "设计师", "运营"],
 };
 
+// 第一条 = 发起讨论内容（与 LaunchPad 必填一致）；其余为多轮讨论
 const MESSAGES = [
-  { senderLabel: "发起者", kind: "human", content: "我们想做一个小程序，帮用户记录每日习惯并打卡，目标是一个月内能上线 MVP，先验证有没有人愿意持续用。" },
-  { senderLabel: "架构师", kind: "human", content: "技术栈我建议用 Taro + 云开发，开发快、一个人能扛。但云开发的冷启动和并发上限要提前评估，大促或突然爆量容易踩坑。" },
-  { senderLabel: "产品", kind: "human", content: "争议点我觉得主要是三块：技术选型是否稳妥、首月目标到底是「上线」还是「有真实留存」、以及设计资源能不能跟上，否则体验拉胯留不住人。" },
-  { senderLabel: "设计师", kind: "human", content: "打卡的反馈一定要够轻、够爽，否则用户坚持不了几天。动画和成就体系不能省，哪怕先做一版简单的，也比纯文字打卡强。" },
-  { senderLabel: "运营", kind: "human", content: "习惯类产品同质化严重，获客成本会很高。首月如果只做功能不想清楚拉新和留存，很容易做出来没人用。建议先定一个最小获客渠道和留存指标。" },
-  { senderLabel: "架构师", kind: "human", content: "云开发这边我可以先压测一版，把冷启动和并发上限摸清楚再定技术方案。如果上限不够，我们得提前考虑迁到自建或混合方案。" },
-  { senderLabel: "发起者", kind: "human", content: "那首月我们就定两个硬指标：上线可用的 MVP + 至少 100 个真实用户的 7 日留存数据，用来判断要不要继续投入。" },
+  { senderLabel: "发起者", kind: "human", content: "我们想做一个小程序，帮用户记录每日习惯并打卡，目标是一个月内能上线 MVP，先验证有没有人愿意持续用。", slotRole: "host" },
+  { senderLabel: "架构师", kind: "human", content: "技术栈我建议用 Taro + 云开发，开发快、一个人能扛。但云开发的冷启动和并发上限要提前评估，大促或突然爆量容易踩坑。", slotRole: "架构师" },
+  { senderLabel: "产品", kind: "human", content: "争议点我觉得主要是三块：技术选型是否稳妥、首月目标到底是「上线」还是「有真实留存」、以及设计资源能不能跟上，否则体验拉胯留不住人。", slotRole: "产品" },
+  { senderLabel: "设计师", kind: "human", content: "打卡的反馈一定要够轻、够爽，否则用户坚持不了几天。动画和成就体系不能省，哪怕先做一版简单的，也比纯文字打卡强。", slotRole: "设计师" },
+  { senderLabel: "运营", kind: "human", content: "习惯类产品同质化严重，获客成本会很高。首月如果只做功能不想清楚拉新和留存，很容易做出来没人用。建议先定一个最小获客渠道和留存指标。", slotRole: "运营" },
+  { senderLabel: "架构师", kind: "human", content: "云开发这边我可以先压测一版，把冷启动和并发上限摸清楚再定技术方案。如果上限不够，我们得提前考虑迁到自建或混合方案。", slotRole: "架构师" },
+  { senderLabel: "发起者", kind: "human", content: "那首月我们就定两个硬指标：上线可用的 MVP + 至少 100 个真实用户的 7 日留存数据，用来判断要不要继续投入。", slotRole: "host" },
 ];
 
 async function main() {
@@ -49,6 +52,7 @@ async function main() {
       goal: PROJECT.goal,
       category: PROJECT.category,
       stage: PROJECT.stage,
+      reviewPhase: PROJECT.reviewPhase ?? "spontaneous",
     },
   });
 
@@ -59,12 +63,15 @@ async function main() {
     ],
   });
 
+  // 第一条为发起者的「发起讨论内容」（与 POST /api/projects 一致：userId + slotRole: host）
   const created = await prisma.debateMessage.createMany({
-    data: MESSAGES.map((m) => ({
+    data: MESSAGES.map((m, i) => ({
       projectId: project.id,
       kind: m.kind,
       senderLabel: m.senderLabel,
       content: m.content,
+      userId: i === 0 ? user.id : null,
+      slotRole: m.slotRole ?? null,
     })),
   });
 

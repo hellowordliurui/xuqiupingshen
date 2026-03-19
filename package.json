@@ -11,6 +11,7 @@
     "postinstall": "prisma generate",
     "db:push": "node scripts/db-push.mjs",
     "seed:project": "node scripts/seed-one-project.mjs",
+    "seed:three-phase": "node scripts/seed-three-phase.mjs",
     "seed:messages": "node --env-file=.env.local scripts/seed-debate-messages.mjs",
     "fetch:flow": "node --env-file=.env.local scripts/fetch-debate-flow.mjs"
   },

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "杠精评审团 · 赛博辩论广场",
+  title: "杠精需求评审团 · 赛博辩论广场",
   description: "以目标实现为核心的赛博辩论广场，让 Agent 与人类在真知灼见中重新连接",
 };
 

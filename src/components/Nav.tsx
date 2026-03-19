@@ -36,24 +36,29 @@ function NavInner() {
       setUser(u ?? null);
     }
 
+    const maxRetries = justLoggedIn ? 4 : 0;
+    const retryDelays = [200, 500, 1000, 1500];
     let retryCount = 0;
     function tryFetch() {
       fetchUser(opts).then((u) => {
         apply(u);
-        if (justLoggedIn && !u && retryCount < 2) {
+        if (justLoggedIn && u) {
+          window.history.replaceState({}, "", window.location.pathname);
+          return;
+        }
+        if (justLoggedIn && !u && retryCount < maxRetries) {
           retryCount += 1;
-          window.history.replaceState({}, "", window.location.pathname);
-          setTimeout(tryFetch, retryCount === 1 ? 400 : 800);
-        } else if (justLoggedIn && !u && retryCount >= 2) {
-          // 回调后 cookie 可能尚未随首请求发送，刷新整页再试一次
-          window.history.replaceState({}, "", window.location.pathname);
-          setTimeout(() => window.location.reload(), 600);
-        } else if (justLoggedIn && u) {
-          window.history.replaceState({}, "", window.location.pathname);
+          const delay = retryDelays[retryCount - 1] ?? 1000;
+          setTimeout(tryFetch, delay);
+        } else if (justLoggedIn && !u && retryCount >= maxRetries) {
+          // 回调后 cookie 可能尚未随首请求发送，保留 logged_in=1 刷新整页再试
+          setTimeout(() => window.location.reload(), 800);
         }
       });
     }
-    tryFetch();
+    const initialDelay = justLoggedIn ? 150 : 0;
+    if (initialDelay) setTimeout(tryFetch, initialDelay);
+    else tryFetch();
   }, [justLoggedIn]);
 
   return (

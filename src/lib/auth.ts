@@ -44,8 +44,9 @@ export async function getSession(): Promise<SessionUser | null> {
       user.accessToken = data.accessToken;
       user.refreshToken = data.refreshToken;
       user.tokenExpiresAt = new Date(now + data.expiresIn * 1000);
-    } catch {
-      return null;
+    } catch (e) {
+      // 刷新失败时不直接踢出：可能为网络/Second Me 瞬时故障，保留 session 让下次请求再试
+      console.warn("[auth] token 刷新失败，保留当前 session", e);
     }
   }
 

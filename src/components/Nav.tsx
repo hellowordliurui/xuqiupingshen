@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { LoginButton } from "./LoginButton";
 
 interface UserInfo {
@@ -11,27 +12,40 @@ interface UserInfo {
   email?: string;
 }
 
+function fetchUser(opts: RequestInit): Promise<UserInfo | null> {
+  return fetch("/api/auth/session", opts)
+    .then((r) => r.json())
+    .then((data) => {
+      if (!data.user) return null;
+      return fetch("/api/user/info", opts)
+        .then((r) => r.json())
+        .then((info) => (info.code === 0 && info.data ? info.data : null));
+    })
+    .catch(() => null);
+}
+
 export function Nav() {
   const [user, setUser] = useState<UserInfo | null | undefined>(undefined);
+  const searchParams = useSearchParams();
+  const justLoggedIn = searchParams.get("logged_in") === "1";
 
   useEffect(() => {
-    const opts = { credentials: "include" as RequestCredentials };
-    fetch("/api/auth/session", opts)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!data.user) {
-          setUser(null);
-          return;
-        }
-        return fetch("/api/user/info", opts)
-          .then((r) => r.json())
-          .then((info) => {
-            if (info.code === 0 && info.data) setUser(info.data);
-            else setUser(null);
-          });
-      })
-      .catch(() => setUser(null));
-  }, []);
+    const opts: RequestInit = { credentials: "include", cache: "no-store" };
+
+    function apply(u: UserInfo | null) {
+      setUser(u ?? null);
+    }
+
+    fetchUser(opts).then((u) => {
+      apply(u);
+      if (justLoggedIn && !u) {
+        window.history.replaceState({}, "", window.location.pathname);
+        setTimeout(() => fetchUser(opts).then(apply), 400);
+      } else if (justLoggedIn && u) {
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    });
+  }, [justLoggedIn]);
 
   return (
     <header
@@ -73,7 +87,7 @@ export function Nav() {
                     {user.name?.slice(0, 1) ?? "我"}
                   </span>
                 )}
-                <span className="max-w-[8rem] truncate">{user.name || "个人中心"}</span>
+                <span className="max-w-[8rem] truncate" title={user.name || undefined}>{user.name || "个人中心"}</span>
               </Link>
               <Link
                 href="/api/auth/logout"

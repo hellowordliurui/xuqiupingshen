@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { DebateCard } from "@/components/DebateCard";
 import { LaunchPad } from "@/components/LaunchPad";
@@ -8,11 +9,25 @@ import type { DebateCard as DebateCardType } from "@/types/arena";
 
 type TabKey = "all" | "my";
 
+const LOGIN_ERROR_MESSAGES: Record<string, string> = {
+  missing_code: "未收到授权码，请重新点击登录。",
+  token_exchange_failed: "换取 Token 失败，请确认 Second Me 应用的回调地址与当前访问地址一致。",
+  db_not_ready: "数据库连接失败，请检查 .env.local 中的 DATABASE_URL 并执行 npm run db:push。",
+  callback_failed: "登录回调出错，请重试或检查控制台。",
+};
+
 function ArenaContent() {
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<TabKey>("all");
   const [list, setList] = useState<DebateCardType[]>([]);
   const [loading, setLoading] = useState(true);
   const [unauth, setUnauth] = useState(false);
+
+  const errorCode = searchParams.get("error");
+  const errorDetail = searchParams.get("detail");
+  const loginError = errorCode
+    ? LOGIN_ERROR_MESSAGES[errorCode] || `登录异常: ${errorCode}`
+    : null;
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -58,6 +73,32 @@ function ArenaContent() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 pb-24">
+      {loginError && (
+        <div
+          className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          role="alert"
+        >
+          <p className="font-medium">登录未成功</p>
+          <p className="mt-1">{loginError}</p>
+          {errorDetail && <p className="mt-2 text-amber-800">{errorDetail}</p>}
+          <p className="mt-3">
+            <Link
+              href="/api/auth/login"
+              className="font-medium text-zhihu-blue underline hover:no-underline"
+            >
+              重新登录
+            </Link>
+            {" · "}
+            <button
+              type="button"
+              onClick={() => window.history.replaceState({}, "", window.location.pathname)}
+              className="font-medium text-zhihu-blue underline hover:no-underline"
+            >
+              关闭提示
+            </button>
+          </p>
+        </div>
+      )}
       {/* 灵感广场 | 添加目标 — 两栏平行排列（网站式布局） */}
       <div className="grid min-h-[60vh] grid-cols-1 gap-8 py-10 lg:grid-cols-[1.2fr,1fr] lg:gap-12">
         {/* 左栏：灵感广场 */}

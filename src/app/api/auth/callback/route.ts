@@ -34,18 +34,20 @@ export async function GET(request: NextRequest) {
       console.warn("OAuth state 验证失败，可能是跨 WebView 场景");
     }
 
-    const redirectUri = process.env.SECONDME_REDIRECT_URI;
-    if (!redirectUri) {
-      console.error("[auth/callback] SECONDME_REDIRECT_URI 未配置");
-      return redirectError(request, "config", "SECONDME_REDIRECT_URI 未配置");
-    }
+    const baseUrl = new URL(request.url).origin;
+    const redirectUri =
+      process.env.NODE_ENV === "production"
+        ? (process.env.SECONDME_REDIRECT_URI || `${baseUrl}/api/auth/callback`)
+        : `${baseUrl}/api/auth/callback`;
 
     let tokens: { accessToken: string; refreshToken: string; expiresIn: number };
     try {
       tokens = await exchangeCodeForTokens(code, redirectUri);
     } catch (e) {
       console.error("[auth/callback] 换 token 失败", e);
-      return redirectError(request, "token_exchange_failed");
+      const detail =
+        "请确认 Second Me 开发者后台的回调地址与当前访问地址一致（如 http://localhost:3002/api/auth/callback 或 http://127.0.0.1:3002/api/auth/callback）";
+      return redirectError(request, "token_exchange_failed", detail);
     }
 
     const expiresAt = new Date(Date.now() + tokens.expiresIn * 1000);
@@ -74,8 +76,9 @@ export async function GET(request: NextRequest) {
     });
 
     const sessionId = await createSession(user.id);
-    const baseUrl = new URL(request.url).origin;
-    const res = NextResponse.redirect(new URL("/", baseUrl));
+    const homeUrl = new URL("/", baseUrl);
+    homeUrl.searchParams.set("logged_in", "1");
+    const res = NextResponse.redirect(homeUrl, 303);
     res.cookies.set(SESSION_COOKIE, sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -87,10 +90,22 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[auth/callback] 未处理错误", e);
-    const isDbError = msg.includes("SQLite") || msg.includes("prisma") || msg.includes("database") || msg.includes("no such table");
+    const isDbError =
+      msg.includes("SQLite") ||
+      msg.includes("prisma") ||
+      msg.includes("database") ||
+      msg.includes("no such table") ||
+      msg.includes("connection") ||
+      msg.includes("P1001") ||
+      msg.includes("Tenant or user not found") ||
+      msg.includes("FATAL");
     if (isDbError) {
-      return redirectError(request, "db_not_ready", "请先执行: npx prisma db push");
+      const hint =
+        process.env.NODE_ENV === "development"
+          ? `数据库连接失败: ${msg.slice(0, 60)}。请检查 .env.local 的 DATABASE_URL / DATABASE_DIRECT_URL（Supabase 需用 postgres.项目ref 作用户名），并执行: npm run db:push`
+          : "数据库未就绪，请联系管理员执行 db:push";
+      return redirectError(request, "db_not_ready", hint);
     }
-    return redirectError(request, "callback_failed", msg.slice(0, 100));
+    return redirectError(request, "callback_failed", msg.slice(0, 120));
   }
 }

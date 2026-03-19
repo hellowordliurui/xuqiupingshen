@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { SECONDME } from "@/lib/secondme";
 
@@ -12,10 +12,10 @@ function errorHtml(title: string, msg: string) {
   );
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     SECONDME.clientId();
-    SECONDME.redirectUri();
+    SECONDME.clientSecret();
   } catch (e) {
     const msg = e instanceof Error ? e.message : "配置错误";
     console.error("[auth/login]", msg);
@@ -23,6 +23,12 @@ export async function GET() {
   }
 
   try {
+    const origin = new URL(request.url).origin;
+    // 开发环境用当前请求的 origin，避免用 localhost 打开却配了 127.0.0.1 导致回调/ Cookie 不同源
+    const redirectUri =
+      process.env.NODE_ENV === "production"
+        ? (process.env.SECONDME_REDIRECT_URI || `${origin}/api/auth/callback`)
+        : `${origin}/api/auth/callback`;
     const state = crypto.randomUUID();
     const cookieStore = await cookies();
     cookieStore.set(STATE_COOKIE, state, {
@@ -35,10 +41,10 @@ export async function GET() {
 
     const params = new URLSearchParams({
       client_id: SECONDME.clientId(),
-      redirect_uri: SECONDME.redirectUri(),
+      redirect_uri: redirectUri,
       response_type: "code",
       state,
-      scope: "user.info", // 必须携带 scope，SecondMe 才会展示「获取权限」授权页
+      scope: "user.info",
     });
     const url = `${SECONDME.oauthUrl()}?${params.toString()}`;
     return NextResponse.redirect(url);

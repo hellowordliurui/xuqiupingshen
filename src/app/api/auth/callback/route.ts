@@ -90,16 +90,20 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[auth/callback] 未处理错误", e);
-    const isDbError =
-      msg.includes("SQLite") ||
-      msg.includes("prisma") ||
-      msg.includes("database") ||
-      msg.includes("no such table") ||
-      msg.includes("connection") ||
+    // 仅把「连不上库 / 表不存在」当成数据库问题，其它 Prisma 错误（如唯一约束、校验）不归为 db_not_ready
+    const isDbConnectionOrSchemaError =
+      msg.includes("P1000") ||
       msg.includes("P1001") ||
+      msg.includes("P1002") ||
+      msg.includes("P1017") ||
+      msg.includes("no such table") ||
+      msg.includes("does not exist") ||
+      msg.includes("SQLite") ||
+      msg.includes("ECONNREFUSED") ||
+      msg.includes("connection refused") ||
       msg.includes("Tenant or user not found") ||
-      msg.includes("FATAL");
-    if (isDbError) {
+      /FATAL.*connection/i.test(msg);
+    if (isDbConnectionOrSchemaError) {
       const hint =
         process.env.NODE_ENV === "development"
           ? `数据库连接失败: ${msg.slice(0, 60)}。请检查 .env.local 的 DATABASE_URL / DATABASE_DIRECT_URL（Supabase 需用 postgres.项目ref 作用户名），并执行: npm run db:push`

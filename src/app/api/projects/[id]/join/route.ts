@@ -8,10 +8,12 @@ import { secondmeChat } from "@/lib/secondme";
 /** 第二轮发言的固定顺序：host 先，其余按此顺序 */
 const ROUND2_ORDER = ["host", "架构师", "算法", "设计师", "运营", "产品", "财务", "法务", "数据", "FE"];
 const RECENT_MESSAGES_FOR_AVATAR = 25;
+/** 至少几人且每人发言 1 次后触发第二轮（测试用：2 人即可，正式可改为 MAX_ROOM_SIZE） */
+const MIN_PARTICIPANTS_FOR_ROUND2 = 2;
 
 /**
  * 加入辩论：POST /api/projects/[id]/join { role?: SlotRole }
- * 每人进入后只发言 1 次（结合此前讨论+目标）；当 5 方都发言过 1 次后，自动按顺序进行第二轮，每人再发言 1 次。共两轮、5 人、每人两次。
+ * 每人进入后只发言 1 次；当人数 ≥ MIN_PARTICIPANTS_FOR_ROUND2 且每人已发言 1 次后，自动进行第二轮，每人再发言 1 次。
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const filledNow = filledSlots.length;
   const distinctSpeakers = new Set(messagesNow.map((m) => m.slotRole)).size;
   const round1Complete =
-    filledNow === MAX_ROOM_SIZE &&
+    filledNow >= MIN_PARTICIPANTS_FOR_ROUND2 &&
     distinctSpeakers === filledNow &&
     messagesNow.length === filledNow;
 
@@ -113,12 +115,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const ib = ROUND2_ORDER.indexOf(b.role);
       return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
     });
+    const title = project.title ?? "";
+    const goal = project.goal ?? "";
     for (const s of sortedSlots) {
       if (!s.userId) continue;
       const token = await getAccessTokenForUser(s.userId);
-      const projectWithGoal = await prisma.project.findUnique({ where: { id: projectId } });
-      const title = projectWithGoal?.title ?? "";
-      const goal = projectWithGoal?.goal ?? "";
       const msgs = await prisma.debateMessage.findMany({
         where: { projectId },
         orderBy: { createdAt: "asc" },

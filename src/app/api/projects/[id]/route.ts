@@ -8,16 +8,12 @@ import { roleDisplayLabels } from "@/types/arena";
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
   const { id } = await params;
-  const project = await prisma.project.findUnique({
-    where: { id },
-    include: { slots: true },
-  });
+  const [session, project, messages] = await Promise.all([
+    getSession(),
+    prisma.project.findUnique({ where: { id }, include: { slots: true } }),
+    prisma.debateMessage.findMany({ where: { projectId: id }, orderBy: { createdAt: "asc" } }),
+  ]);
   if (!project) return NextResponse.json({ code: 404, message: "项目不存在" }, { status: 404 });
-
-  const messages = await prisma.debateMessage.findMany({
-    where: { projectId: id },
-    orderBy: { createdAt: "asc" },
-  });
   const userIds = new Set<string>();
   userIds.add(project.hostUserId);
   project.slots.forEach((s) => { if (s.userId) userIds.add(s.userId); });
@@ -41,7 +37,6 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     userId: s.userId,
     displayName: s.userId ? (displayNameByUserId.get(s.userId) ?? null) : null,
   }));
-  const session = await getSession();
   const card = toDebateCard(
     {
       id: project.id,

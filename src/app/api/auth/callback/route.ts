@@ -83,6 +83,9 @@ export async function GET(request: NextRequest) {
     });
 
     const sessionId = await createSession(user.id);
+    if (process.env.NODE_ENV === "production") {
+      console.log("[auth/callback] session 已创建", { sessionId: sessionId.slice(0, 8) + "...", origin: baseUrl });
+    }
     const homeUrl = new URL("/", baseUrl);
     homeUrl.searchParams.set("logged_in", "1");
     const res = NextResponse.redirect(homeUrl, 303);

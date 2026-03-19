@@ -65,6 +65,49 @@ AI 会：
 
 ---
 
+## 线上部署：登录可用性检查（本地可以、线上不行时必看）
+
+线上登录依赖**环境变量**和 **Second Me 后台回调地址**，有一处不一致就会「换 token 失败」或「登录成功后又变未登录」。
+
+### 1. 必须配置的环境变量（Vercel / 其他平台）
+
+在部署平台的「环境变量」里为 **Production** 配置：
+
+| 变量 | 说明 | 示例 |
+|------|------|------|
+| `SECONDME_CLIENT_ID` | Second Me 应用 Client ID | 与本地 .env.local 相同 |
+| `SECONDME_CLIENT_SECRET` | Second Me 应用 Client Secret | 与本地 .env.local 相同 |
+| `SECONDME_REDIRECT_URI` | **线上**回调地址，必须与访问域名一致 | `https://你的项目.vercel.app/api/auth/callback` |
+| `DATABASE_URL` | 生产库连接（如 Supabase pooler） | `postgresql://postgres.xxx:密码@...pooler...:6543/postgres?pgbouncer=true` |
+| `DATABASE_DIRECT_URL` | 生产库直连（Prisma migrate/push 用） | `postgresql://postgres.xxx:密码@db.xxx.supabase.co:5432/postgres` |
+
+- 若不配置 `SECONDME_REDIRECT_URI`，代码会用「当前请求的 origin + /api/auth/callback」作为回调。若你用了自定义域名或有多套域名，**强烈建议**在环境变量里写死与 Second Me 后台一致的回调地址，避免 origin 与预期不符。
+- 若生产库未配或配错，callback 会报错（如 db_not_ready）或 session 写不进去，下次请求 `/api/auth/session` 拿不到 session，表现为「登录成功加载中后又变成未登录」。
+
+### 2. Second Me 开发者后台回调地址
+
+在 [develop.second.me](https://develop.second.me) 你的应用里，**回调地址**必须包含你线上的完整回调 URL，例如：
+
+- `https://你的项目.vercel.app/api/auth/callback`
+- 若用自定义域名：`https://你的域名/api/auth/callback`
+
+与 `SECONDME_REDIRECT_URI`（或你实际访问的 origin）**完全一致**（协议、域名、路径），否则授权后会换 token 失败。
+
+### 3. 三处一致
+
+| 位置 | 应填内容 |
+|------|----------|
+| 部署平台环境变量 `SECONDME_REDIRECT_URI` | `https://你线上访问的域名/api/auth/callback` |
+| Second Me 应用「回调地址」 | 同上（可配置多条，包含上述一条） |
+| 用户实际访问的站点 | 与上面域名一致（如都用 `xxx.vercel.app` 或都用自定义域名） |
+
+### 4. 常见现象对照
+
+- **点登录后跳回首页并带 `?error=token_exchange_failed`**：回调 URL 与 Second Me 后台不一致，或环境变量里 `SECONDME_REDIRECT_URI` 与当前访问域名不一致。
+- **显示「登录成功，正在加载…」然后又变成未登录**：多为生产库未配/连不上或 session 未写入；少数为 cookie 未带上（域名/HTTPS 不一致）。按上面检查 `DATABASE_*` 与 `SECONDME_REDIRECT_URI`，并确认线上日志是否有 `[auth/session] getSession 异常` 或 `[auth] token 刷新失败`。
+
+---
+
 ## 四、和本仓库「杠精评审团」怎么配合
 
 - **方式 A**：让 Skill 在**当前项目**里加登录——直接对 AI 说「在现有 Next.js 项目里接入 Second Me OAuth」，并指定本仓库路径；AI 会基于 Skill 在本项目里加路由、环境变量、登录按钮等。

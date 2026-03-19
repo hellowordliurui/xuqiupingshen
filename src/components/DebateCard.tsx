@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { DebateCard as DebateCardType } from "@/types/arena";
 import { roleDisplayLabels } from "@/types/arena";
@@ -77,6 +78,7 @@ function SeatCard({
 }
 
 export function DebateCard({ card, onJoin, compact, currentUserName }: DebateCardProps) {
+  const router = useRouter();
   const filledCount = card.slots.filter((s) => s.filled).length;
   const total = card.slots.length;
   const statusText = card.isFull
@@ -95,8 +97,12 @@ export function DebateCard({ card, onJoin, compact, currentUserName }: DebateCar
         body: JSON.stringify({ role: firstMissingRole }),
       });
       const json = await res.json();
-      if (json.code === 0) onJoin?.();
-      else alert(json.message ?? "加入失败");
+      if (json.code === 0) {
+        onJoin?.();
+        router.push(`/projects/${card.id}`);
+      } else {
+        alert(json.message ?? "加入失败");
+      }
     } catch {
       alert("网络错误，请重试");
     } finally {

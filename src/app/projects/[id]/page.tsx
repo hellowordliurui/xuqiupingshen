@@ -89,7 +89,7 @@ function DiscussionSection({
           <span className="ml-1">，可点击「进入实证环节」由刘看山调取知乎实锤。</span>
         </div>
       )}
-      {canSend && (
+      {canSend && messages.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
           {phase === "spontaneous" && (
             <button
@@ -125,33 +125,8 @@ function DiscussionSection({
       )}
       <div className="min-h-[120px] max-h-[400px] overflow-y-auto rounded-xl border border-gray-200 bg-gray-50/30 py-4 px-4">
         {messages.length === 0 ? (
-          <div className="py-6 text-center text-sm text-geek-gray-light space-y-3">
+          <div className="py-6 text-center text-sm text-geek-gray-light">
             <p>暂无发言，参与本场辩论后即可在此讨论。</p>
-            {process.env.NODE_ENV === "development" && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const res = await fetch("/api/dev/seed-messages", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ projectId }),
-                    });
-                    const json = await res.json();
-                    if (json.ok) {
-                      onSent();
-                    } else {
-                      alert(json.error ?? "注入失败");
-                    }
-                  } catch {
-                    alert("请求失败");
-                  }
-                }}
-                className="text-zhihu-blue hover:underline font-medium"
-              >
-                开发：注入示例讨论数据
-              </button>
-            )}
           </div>
         ) : (
           <ul className="space-y-4">

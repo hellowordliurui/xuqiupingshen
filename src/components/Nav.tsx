@@ -17,9 +17,17 @@ function fetchUser(opts: RequestInit): Promise<UserInfo | null> {
     .then((r) => r.json())
     .then((data) => {
       if (!data.user) return null;
+      const sessionUser = data.user as { id: string; secondmeUserId?: string };
       return fetch("/api/user/info", opts)
         .then((r) => r.json())
-        .then((info) => (info.code === 0 && info.data ? info.data : null));
+        .then((info) => {
+          if (info.code === 0 && info.data) return info.data as UserInfo;
+          // session 有效但 user/info 失败（如 Second Me 超时）时仍视为已登录，用兜底展示
+          return {
+            userId: sessionUser.id,
+            name: "用户",
+          } as UserInfo;
+        });
     })
     .catch(() => null);
 }

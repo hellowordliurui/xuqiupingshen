@@ -38,6 +38,7 @@ export async function GET() {
       redirect_uri: SECONDME.redirectUri(),
       response_type: "code",
       state,
+      scope: "user.info", // 必须携带 scope，SecondMe 才会展示「获取权限」授权页
     });
     const url = `${SECONDME.oauthUrl()}?${params.toString()}`;
     return NextResponse.redirect(url);

@@ -37,37 +37,46 @@ function NavInner() {
   const searchParams = useSearchParams();
   const justLoggedIn = searchParams.get("logged_in") === "1";
 
+  // 仅挂载时拉取一次；用初始 URL 的 logged_in 做重试，避免 replaceState 清掉 ?logged_in=1 后 effect 再跑一次把已成功的登录状态覆盖成「用户」或未登录
   useEffect(() => {
+    const isLoggedInFlow = searchParams.get("logged_in") === "1";
     const opts: RequestInit = { credentials: "include", cache: "no-store" };
 
     function apply(u: UserInfo | null) {
-      setUser(u ?? null);
+      setUser((prev) => {
+        // 若已有真实登录名（非兜底「用户」），不要被后续失败请求覆盖
+        if (prev && prev.name && prev.name !== "用户") {
+          if (!u) return prev;
+          if (u.name === "用户" && !u.avatar) return prev;
+        }
+        return u ?? null;
+      });
     }
 
-    const maxRetries = justLoggedIn ? 4 : 0;
+    const maxRetries = isLoggedInFlow ? 4 : 0;
     const retryDelays = [200, 500, 1000, 1500];
     let retryCount = 0;
     function tryFetch() {
       fetchUser(opts).then((u) => {
         apply(u);
-        if (justLoggedIn && u) {
+        if (isLoggedInFlow && u) {
           window.history.replaceState({}, "", window.location.pathname);
           return;
         }
-        if (justLoggedIn && !u && retryCount < maxRetries) {
+        if (isLoggedInFlow && !u && retryCount < maxRetries) {
           retryCount += 1;
           const delay = retryDelays[retryCount - 1] ?? 1000;
           setTimeout(tryFetch, delay);
-        } else if (justLoggedIn && !u && retryCount >= maxRetries) {
+        } else if (isLoggedInFlow && !u && retryCount >= maxRetries) {
           // 回调后 cookie 可能尚未随首请求发送，保留 logged_in=1 刷新整页再试
           setTimeout(() => window.location.reload(), 800);
         }
       });
     }
-    const initialDelay = justLoggedIn ? 150 : 0;
+    const initialDelay = isLoggedInFlow ? 150 : 0;
     if (initialDelay) setTimeout(tryFetch, initialDelay);
     else tryFetch();
-  }, [justLoggedIn]);
+  }, []);
 
   return (
     <header

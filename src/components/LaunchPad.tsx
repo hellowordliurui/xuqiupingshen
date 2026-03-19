@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const DEFAULT_ROLES = ["架构师", "算法", "设计师", "运营"];
@@ -9,6 +10,7 @@ interface LaunchPadProps {
 }
 
 export function LaunchPad({ onSuccess }: LaunchPadProps) {
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [goal, setGoal] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -38,6 +40,11 @@ export function LaunchPad({ onSuccess }: LaunchPadProps) {
         setTitle("");
         setGoal("");
         onSuccess?.();
+        const projectId = json.data?.id;
+        if (projectId) {
+          router.push(`/projects/${projectId}`);
+          return;
+        }
       } else {
         setError(json.message ?? "创建失败");
       }

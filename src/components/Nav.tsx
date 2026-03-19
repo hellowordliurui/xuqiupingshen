@@ -15,14 +15,15 @@ export function Nav() {
   const [user, setUser] = useState<UserInfo | null | undefined>(undefined);
 
   useEffect(() => {
-    fetch("/api/auth/session")
+    const opts = { credentials: "include" as RequestCredentials };
+    fetch("/api/auth/session", opts)
       .then((r) => r.json())
       .then((data) => {
         if (!data.user) {
           setUser(null);
           return;
         }
-        return fetch("/api/user/info")
+        return fetch("/api/user/info", opts)
           .then((r) => r.json())
           .then((info) => {
             if (info.code === 0 && info.data) setUser(info.data);

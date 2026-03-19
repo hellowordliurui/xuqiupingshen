@@ -74,7 +74,8 @@ export async function GET(request: NextRequest) {
     });
 
     const sessionId = await createSession(user.id);
-    const res = NextResponse.redirect(new URL("/", request.url));
+    const baseUrl = new URL(request.url).origin;
+    const res = NextResponse.redirect(new URL("/", baseUrl));
     res.cookies.set(SESSION_COOKIE, sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

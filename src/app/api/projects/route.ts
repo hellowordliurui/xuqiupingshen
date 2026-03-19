@@ -57,8 +57,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const data = list.map((p) =>
-      toDebateCard(
+    const data = list.map((p) => {
+      const card = toDebateCard(
         {
           id: p.id,
           title: p.title,
@@ -74,8 +74,15 @@ export async function GET(request: NextRequest) {
           })),
         },
         session?.id
-      )
-    );
+      );
+      return {
+        ...card,
+        reviewPhase: p.reviewPhase ?? "spontaneous",
+        reportDeadlySpots: p.reportDeadlySpots ?? undefined,
+        reportPitfalls: p.reportPitfalls ?? undefined,
+        reportPath: p.reportPath ?? undefined,
+      };
+    });
     return NextResponse.json({ code: 0, data });
   } catch (e) {
     console.error("[api/projects GET]", e);

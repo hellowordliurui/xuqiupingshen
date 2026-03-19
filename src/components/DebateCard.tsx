@@ -81,9 +81,14 @@ export function DebateCard({ card, onJoin, compact, currentUserName }: DebateCar
   const router = useRouter();
   const filledCount = card.slots.filter((s) => s.filled).length;
   const total = card.slots.length;
-  const statusText = card.isFull
-    ? "已生成执行蓝图"
-    : "逻辑碰撞中";
+  const hasConclusion =
+    card.reviewPhase === "blueprint" &&
+    (!!card.reportDeadlySpots || !!card.reportPitfalls || !!card.reportPath);
+  const statusText = hasConclusion
+    ? "已结束"
+    : card.isFull
+      ? "已生成执行蓝图"
+      : "逻辑碰撞中";
   const [joining, setJoining] = useState(false);
   const firstMissingRole = card.missingRoles?.[0];
 

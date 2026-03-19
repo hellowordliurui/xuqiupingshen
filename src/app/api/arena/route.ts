@@ -14,8 +14,8 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
       include: { slots: true },
     });
-    const cards = list.map((p) =>
-      toDebateCard(
+    const cards = list.map((p) => {
+      const card = toDebateCard(
         {
           id: p.id,
           title: p.title,
@@ -26,8 +26,15 @@ export async function GET() {
           slots: p.slots.map((s) => ({ role: s.role, type: s.type, userId: s.userId })),
         },
         session?.id
-      )
-    );
+      );
+      return {
+        ...card,
+        reviewPhase: p.reviewPhase ?? "spontaneous",
+        reportDeadlySpots: p.reportDeadlySpots ?? undefined,
+        reportPitfalls: p.reportPitfalls ?? undefined,
+        reportPath: p.reportPath ?? undefined,
+      };
+    });
     return NextResponse.json({ code: 0, data: cards });
   } catch (e) {
     console.error("[api/arena]", e);

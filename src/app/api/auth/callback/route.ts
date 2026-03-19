@@ -3,13 +3,15 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { exchangeCodeForTokens } from "@/lib/secondme";
 import { createSession } from "@/lib/auth";
+import { getCanonicalOrigin } from "@/lib/request-origin";
 const STATE_COOKIE = "oauth_state";
 const SESSION_COOKIE = "sid";
 
 function redirectError(request: NextRequest, code: string, detail?: string) {
   const params = new URLSearchParams({ error: code });
   if (detail) params.set("detail", detail);
-  return NextResponse.redirect(new URL(`/?${params.toString()}`, request.url));
+  const base = getCanonicalOrigin(request);
+  return NextResponse.redirect(new URL(`/?${params.toString()}`, base));
 }
 
 export async function GET(request: NextRequest) {
@@ -34,7 +36,8 @@ export async function GET(request: NextRequest) {
       console.warn("OAuth state 验证失败，可能是跨 WebView 场景");
     }
 
-    const baseUrl = new URL(request.url).origin;
+    // 生产环境用 x-forwarded-* 拼出 HTTPS origin，避免重定向到 http 或域名错位导致 Set-Cookie 不生效
+    const baseUrl = getCanonicalOrigin(request);
     const redirectUri =
       process.env.NODE_ENV === "production"
         ? (process.env.SECONDME_REDIRECT_URI || `${baseUrl}/api/auth/callback`)
@@ -89,6 +92,7 @@ export async function GET(request: NextRequest) {
     const homeUrl = new URL("/", baseUrl);
     homeUrl.searchParams.set("logged_in", "1");
     const res = NextResponse.redirect(homeUrl, 303);
+    res.headers.set("Cache-Control", "private, no-store, no-cache, max-age=0");
     res.cookies.set(SESSION_COOKIE, sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

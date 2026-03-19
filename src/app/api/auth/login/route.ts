@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { SECONDME } from "@/lib/secondme";
+import { getCanonicalOrigin } from "@/lib/request-origin";
 
 const STATE_COOKIE = "oauth_state";
 
@@ -23,8 +24,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const origin = new URL(request.url).origin;
-    // 开发环境用当前请求的 origin，避免用 localhost 打开却配了 127.0.0.1 导致回调/ Cookie 不同源
+    // 生产环境用 x-forwarded-* 拼出 HTTPS origin，避免代理后 request.url 为 http 或域名不一致导致回调/ Cookie 不生效
+    const origin = getCanonicalOrigin(request);
     const redirectUri =
       process.env.NODE_ENV === "production"
         ? (process.env.SECONDME_REDIRECT_URI || `${origin}/api/auth/callback`)

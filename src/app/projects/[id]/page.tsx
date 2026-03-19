@@ -7,6 +7,16 @@ import { DebateCard } from "@/components/DebateCard";
 import type { DebateCard as DebateCardType, DebateMessageItem } from "@/types/arena";
 import type { ReviewPhase } from "@/types/arena";
 
+/** 对话流上方/内部的统一状态文案 */
+function getFlowStatusText(loading: string | null, flowStatus: "refreshing" | "speaking" | null): string | null {
+  if (loading === "zhihu") return "正在拉取知乎数据…";
+  if (loading === "advance") return "正在进入实证环节…";
+  if (loading === "blueprint") return "正在生成执行蓝图…";
+  if (flowStatus === "refreshing") return "正在获取最新讨论…";
+  if (flowStatus === "speaking") return "打字中…";
+  return null;
+}
+
 function DiscussionSection({
   projectId,
   messages,
@@ -14,6 +24,7 @@ function DiscussionSection({
   onSent,
   reviewPhase,
   onPhaseDone,
+  flowStatus,
 }: {
   projectId: string;
   messages: DebateMessageItem[];
@@ -21,11 +32,14 @@ function DiscussionSection({
   onSent: () => void;
   reviewPhase?: ReviewPhase | string;
   onPhaseDone?: () => void;
+  /** 由父组件传入的对话流状态：刷新中 / 生成发言中 */
+  flowStatus?: "refreshing" | "speaking" | null;
 }) {
   const [loading, setLoading] = useState<string | null>(null);
   const [intentHint] = useState<{ shouldTrigger: boolean; triggeredBy: string[]; roundCount: number } | null>(null);
   const [justAdvanced] = useState(false);
   const phase = (reviewPhase as ReviewPhase) ?? "spontaneous";
+  const flowStatusText = getFlowStatusText(loading, flowStatus ?? null);
 
   async function advanceToValidation() {
     setLoading("advance");
@@ -127,22 +141,36 @@ function DiscussionSection({
         {messages.length === 0 ? (
           <div className="py-6 text-center text-sm text-geek-gray-light">
             <p>暂无发言，参与本场辩论后即可在此讨论。</p>
+            {flowStatusText && (
+              <div className="mt-4 flex items-center justify-center gap-2 text-zhihu-blue">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-zhihu-blue" />
+                {flowStatusText}
+              </div>
+            )}
           </div>
         ) : (
-          <ul className="space-y-4">
-            {messages.map((m) => (
-              <li key={m.id} className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-zhihu-blue">
-                  {m.senderLabel}
-                  {m.kind === "system" ? " · 系统" : ""}
-                </span>
-                <p className="text-sm text-geek-gray whitespace-pre-wrap break-words">{m.content}</p>
-                <time className="text-xs text-geek-gray-light">
-                  {new Date(m.createdAt).toLocaleString("zh-CN")}
-                </time>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="space-y-4">
+              {messages.map((m) => (
+                <li key={m.id} className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-zhihu-blue">
+                    {m.senderLabel}
+                    {m.kind === "system" ? " · 系统" : ""}
+                  </span>
+                  <p className="text-sm text-geek-gray whitespace-pre-wrap break-words">{m.content}</p>
+                  <time className="text-xs text-geek-gray-light">
+                    {new Date(m.createdAt).toLocaleString("zh-CN")}
+                  </time>
+                </li>
+              ))}
+            </ul>
+            {flowStatusText && (
+              <div className="mt-4 flex items-center gap-2 rounded-lg border border-zhihu-blue/30 bg-zhihu-blue/5 px-3 py-2 text-sm text-zhihu-blue">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-zhihu-blue" />
+                {flowStatusText}
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>
@@ -157,10 +185,15 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [speakingOrAdvancing, setSpeakingOrAdvancing] = useState(false);
   const hostEnterCalledRef = useRef(false);
+  const ensureFirstMessageCalledRef = useRef(false);
+  const autoAdvanceCalledRef = useRef(false);
 
-  const refreshProject = useCallback(async () => {
+  const refreshProject = useCallback(async (options?: { clearSpeaking?: boolean; silent?: boolean }) => {
     if (!id) return;
+    if (!options?.silent) setRefreshing(true);
     try {
       const res = await fetch(`/api/projects/${id}`, {
         cache: "no-store",
@@ -171,9 +204,15 @@ export default function ProjectDetailPage() {
       if (json.code === 0 && json.data) {
         setCard(json.data);
         setMessages(Array.isArray(json.data.messages) ? json.data.messages : []);
+        // 新数据已回显完成后再关闭「打字中」，避免提前消失
+        if (options?.clearSpeaking) setSpeakingOrAdvancing(false);
+      } else if (options?.clearSpeaking) {
+        setSpeakingOrAdvancing(false);
       }
     } catch {
-      // ignore
+      if (options?.clearSpeaking) setSpeakingOrAdvancing(false);
+    } finally {
+      if (!options?.silent) setRefreshing(false);
     }
   }, [id]);
 
@@ -232,13 +271,78 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     if (!id || !card?.isCurrentUserHost || hostEnterCalledRef.current) return;
     hostEnterCalledRef.current = true;
+    setSpeakingOrAdvancing(true);
+    const fallback = setTimeout(() => setSpeakingOrAdvancing(false), 25000);
     fetch(`/api/projects/${id}/enter`, { method: "POST", credentials: "include" })
       .then((r) => r.json())
       .then((json) => {
-        if (json.code === 0 && json.data?.entered) refreshProject();
+        if (json.code === 0 && json.data?.entered) refreshProject({ clearSpeaking: true, silent: true });
+        else setSpeakingOrAdvancing(false);
+        clearTimeout(fallback);
       })
-      .catch(() => {});
+      .catch(() => {
+        setSpeakingOrAdvancing(false);
+        clearTimeout(fallback);
+      });
+    return () => clearTimeout(fallback);
   }, [id, card?.isCurrentUserHost, refreshProject]);
+
+  // 非发起人且已加入：进入详情页后根据当前讨论上下文生成首条发言（仅调用一次）
+  useEffect(() => {
+    if (!id || !card?.currentUserInProject || card?.isCurrentUserHost || ensureFirstMessageCalledRef.current) return;
+    ensureFirstMessageCalledRef.current = true;
+    setSpeakingOrAdvancing(true);
+    const fallback = setTimeout(() => setSpeakingOrAdvancing(false), 45000);
+    fetch(`/api/projects/${id}/ensure-first-message`, { method: "POST", credentials: "include" })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.code === 0 && json.data?.ensured) refreshProject({ clearSpeaking: true, silent: true });
+        else setSpeakingOrAdvancing(false);
+        clearTimeout(fallback);
+      })
+      .catch(() => {
+        setSpeakingOrAdvancing(false);
+        clearTimeout(fallback);
+      });
+    return () => clearTimeout(fallback);
+  }, [id, card?.currentUserInProject, card?.isCurrentUserHost, refreshProject]);
+
+  // 自发讨论阶段且已有讨论时，自动检查意图并在触发时进入实证（仅调用一次，加入评审后的重逻辑在此执行）
+  useEffect(() => {
+    if (!id || !card || autoAdvanceCalledRef.current) return;
+    const phase = card.reviewPhase ?? "spontaneous";
+    if (phase !== "spontaneous" || !messages.length) return;
+    autoAdvanceCalledRef.current = true;
+    setSpeakingOrAdvancing(true);
+    const fallback = setTimeout(() => setSpeakingOrAdvancing(false), 60000);
+    fetch(`/api/projects/${id}/auto-advance-if-intent`, { method: "POST", credentials: "include" })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.code === 0 && json.data?.advanced) refreshProject({ clearSpeaking: true, silent: true });
+        else setSpeakingOrAdvancing(false);
+        clearTimeout(fallback);
+      })
+      .catch(() => {
+        setSpeakingOrAdvancing(false);
+        clearTimeout(fallback);
+      });
+    return () => clearTimeout(fallback);
+  }, [id, card, messages.length, refreshProject]);
+
+  // 详情页加载后即自动轮询：有「打字中」时短间隔拉取新数据，否则常规间隔，无需手动刷新
+  const POLL_MS = 2000;
+  const POLL_MS_WHEN_SPEAKING = 1200;
+  useEffect(() => {
+    if (!id) return;
+    // 进入详情页后先尽快拉一次（与初始 load 并行，谁先回来谁先渲染）
+    const first = setTimeout(() => refreshProject({ silent: true }), 600);
+    const interval = speakingOrAdvancing ? POLL_MS_WHEN_SPEAKING : POLL_MS;
+    const timer = setInterval(() => refreshProject({ silent: true }), interval);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [id, speakingOrAdvancing, refreshProject]);
 
   if (loading) {
     return (
@@ -281,9 +385,10 @@ export default function ProjectDetailPage() {
         projectId={card.id}
         messages={messages}
         canSend={!!card.currentUserInProject}
-        onSent={refreshProject}
+        onSent={() => refreshProject()}
         reviewPhase={card.reviewPhase}
-        onPhaseDone={refreshProject}
+        onPhaseDone={() => refreshProject()}
+        flowStatus={refreshing ? "refreshing" : speakingOrAdvancing ? "speaking" : null}
       />
 
       {/* 刘看山 · 总结报告（有报告时展示三块，所有用户均可查看） */}

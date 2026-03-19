@@ -10,11 +10,18 @@ export async function GET(request: NextRequest) {
   if (sid) await deleteSession(sid);
   const baseUrl = request.nextUrl.origin;
   const res = NextResponse.redirect(new URL("/", baseUrl));
-  const deleteOptions: { path: string; domain?: string } = { path: "/" };
+  // 用 set 置空 + maxAge 0 清除 cookie，兼容性比 delete(options) 更稳，避免本地/构建环境差异
+  const clearOptions: { path: string; domain?: string; maxAge: number; httpOnly: boolean; secure: boolean; sameSite: 'lax' } = {
+    path: "/",
+    maxAge: 0,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+  };
   const cookieDomain = process.env.COOKIE_DOMAIN?.trim();
   if (process.env.NODE_ENV === "production" && cookieDomain) {
-    deleteOptions.domain = cookieDomain.startsWith(".") ? cookieDomain : `.${cookieDomain}`;
+    clearOptions.domain = cookieDomain.startsWith(".") ? cookieDomain : `.${cookieDomain}`;
   }
-  res.cookies.delete(SESSION_COOKIE, deleteOptions);
+  res.cookies.set(SESSION_COOKIE, "", clearOptions);
   return res;
 }

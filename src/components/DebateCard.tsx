@@ -94,6 +94,7 @@ export function DebateCard({ card, onJoin, compact, currentUserName }: DebateCar
       const res = await fetch(`/api/projects/${card.id}/join`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ role: firstMissingRole }),
       });
       const json = await res.json();

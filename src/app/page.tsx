@@ -33,7 +33,7 @@ function ArenaContent() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/arena");
+      const res = await fetch("/api/arena", { credentials: "include" });
       const json = await res.json();
       if (json.code === 0 && Array.isArray(json.data)) setList(json.data);
       else setList([]);
@@ -48,7 +48,7 @@ function ArenaContent() {
   const fetchMy = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/projects?my=1");
+      const res = await fetch("/api/projects?my=1", { credentials: "include" });
       const json = await res.json();
       if (res.status === 401) {
         setUnauth(true);

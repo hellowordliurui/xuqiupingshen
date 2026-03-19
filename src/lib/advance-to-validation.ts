@@ -43,8 +43,9 @@ export async function doAdvanceToValidation(
     const discussionText = humanOrAgent
       .map((m) => `【${m.senderLabel}】${m.content}`)
       .join("\n\n");
-    const prompt = `你是一个需求评审助手。根据以下讨论内容，提炼 3～5 个「争议点」或「关键词」，用于后续在知乎上检索真实信息做验证。
+    const prompt = `你是一个需求评审助手。请根据「发起人的需求与目标」以及「讨论内容」中的分歧、焦点、疑点，提炼 3～5 个用于知乎检索的「争议点/关键词」。
 要求：只输出一个 JSON 数组，例如 ["关键词A", "关键词B", "关键词C"]，不要任何其他说明、不要 markdown 代码块包裹。
+关键词必须严格基于本场需求与讨论提炼，用于在知乎上检索真实信息做验证；不要使用与本次讨论无关的通用词（如情绪递进、行为引导、触发条件、需求抽象、用户场景等）。
 
 需求标题：${project.title}
 目标：${project.goal}

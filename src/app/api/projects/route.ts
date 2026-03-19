@@ -182,7 +182,10 @@ export async function POST(request: NextRequest) {
       const humanOrAgent = allMessagesForScan.filter((m) => m.kind === "human" || m.kind === "agent");
       const scanMessages = humanOrAgent.map((m) => ({ senderLabel: m.senderLabel, content: m.content, kind: m.kind }));
       try {
-        const result = await runIntentScan(scanMessages, humanOrAgent.length);
+        const result = await runIntentScan(scanMessages, humanOrAgent.length, {
+          projectTitle: project.title ?? undefined,
+          projectGoal: project.goal ?? undefined,
+        });
         intentCheck = {
           shouldTrigger: result.shouldTrigger,
           triggeredBy: result.triggeredBy,

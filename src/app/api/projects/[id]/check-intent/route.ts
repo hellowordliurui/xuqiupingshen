@@ -49,7 +49,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     kind: m.kind,
   }));
 
-  const result = await runIntentScan(scanMessages, roundCount);
+  const result = await runIntentScan(scanMessages, roundCount, {
+    projectTitle: project.title ?? undefined,
+    projectGoal: project.goal ?? undefined,
+  });
 
   return NextResponse.json({
     code: 0,

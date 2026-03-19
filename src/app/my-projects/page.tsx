@@ -16,7 +16,7 @@ export default function MyProjectsPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/projects?my=1");
+        const res = await fetch("/api/projects?my=1", { credentials: "include" });
         const json = await res.json();
         if (cancelled) return;
         if (res.status === 401) {
@@ -53,7 +53,7 @@ export default function MyProjectsPage() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/projects?my=1");
+      const res = await fetch("/api/projects?my=1", { credentials: "include" });
       const json = await res.json();
       if (res.status === 401) setUnauth(true);
       else if (json.code === 0 && Array.isArray(json.data)) setList(json.data);

@@ -29,6 +29,7 @@ export function LaunchPad({ onSuccess }: LaunchPadProps) {
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           title: t,
           goal: g,

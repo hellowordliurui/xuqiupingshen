@@ -30,7 +30,7 @@ function DiscussionSection({
   async function advanceToValidation() {
     setLoading("advance");
     try {
-      const res = await fetch(`/api/projects/${projectId}/advance-to-validation`, { method: "POST" });
+      const res = await fetch(`/api/projects/${projectId}/advance-to-validation`, { method: "POST", credentials: "include" });
       const json = await res.json();
       if (json.code === 0) onPhaseDone?.();
       else alert(json.message ?? "操作失败");
@@ -44,7 +44,7 @@ function DiscussionSection({
   async function fetchZhihuEvidence() {
     setLoading("zhihu");
     try {
-      const res = await fetch(`/api/projects/${projectId}/fetch-zhihu-evidence`, { method: "POST" });
+      const res = await fetch(`/api/projects/${projectId}/fetch-zhihu-evidence`, { method: "POST", credentials: "include" });
       const json = await res.json();
       if (json.code === 0) onPhaseDone?.();
       else alert(json.message ?? "拉取失败");
@@ -58,7 +58,7 @@ function DiscussionSection({
   async function generateBlueprint() {
     setLoading("blueprint");
     try {
-      const res = await fetch(`/api/projects/${projectId}/generate-blueprint`, { method: "POST" });
+      const res = await fetch(`/api/projects/${projectId}/generate-blueprint`, { method: "POST", credentials: "include" });
       const json = await res.json();
       if (json.code === 0) onPhaseDone?.();
       else alert(json.message ?? "生成失败");
@@ -164,6 +164,7 @@ export default function ProjectDetailPage() {
     try {
       const res = await fetch(`/api/projects/${id}`, {
         cache: "no-store",
+        credentials: "include",
         headers: { "Cache-Control": "no-cache" },
       });
       const json = await res.json();
@@ -202,6 +203,7 @@ export default function ProjectDetailPage() {
       try {
         const res = await fetch(`/api/projects/${id}`, {
           cache: "no-store",
+          credentials: "include",
           headers: { "Cache-Control": "no-cache" },
         });
         const json = await res.json();

@@ -5,7 +5,7 @@
  * 维度 A（事实争议）：对客观数据产生严重分歧
  * 维度 B（逻辑死锁）：进入复读机模式，不再产出新观点
  * 维度 C（硬核死角）：有人提出无法绕过的致命风险
- * 维度 D（强制兜底）：对话轮数 ≥ 10 轮，强制吹哨
+ * 维度 D（强制兜底）：对话轮数 ≥ 4 轮，强制吹哨
  */
 
 import { minimaxChat, isMinimaxConfigured } from "@/lib/minimax";
@@ -18,7 +18,7 @@ export interface IntentScanMessage {
 }
 
 /** 轮数阈值：达到后强制吹哨（维度 D） */
-export const ROUND_THRESHOLD = 10;
+export const ROUND_THRESHOLD = 4;
 
 /** 维度标识 */
 export type IntentDimension = "A" | "B" | "C" | "D";
@@ -48,14 +48,22 @@ export interface IntentScanResult {
   suggestedKeywords?: string[];
 }
 
+/** 可选：发起人需求与目标，用于让 LLM 基于「需求+讨论」提炼实证关键词 */
+export interface IntentScanContext {
+  projectTitle?: string;
+  projectGoal?: string;
+}
+
 /**
  * 对讨论记录做意图扫描。
  * @param messages 近期消息（建议仅 spontaneous 阶段的 human/agent，按时间正序）
  * @param roundCount 对话轮数（human+agent 条数），若未传则用 messages 长度
+ * @param context 可选：发起人需求与目标，用于基于「需求+讨论」提炼知乎检索关键词
  */
 export async function runIntentScan(
   messages: IntentScanMessage[],
-  roundCount?: number
+  roundCount?: number,
+  context?: IntentScanContext
 ): Promise<IntentScanResult> {
   const count = roundCount ?? messages.length;
   const triggeredBy: IntentDimension[] = [];
@@ -82,6 +90,11 @@ export async function runIntentScan(
     .map((m) => `【${m.senderLabel}】${m.content}`)
     .join("\n\n");
 
+  const titleBlock =
+    context?.projectTitle || context?.projectGoal
+      ? `发起人需求：${context.projectTitle ?? "（未填）"}\n目标：${context.projectGoal ?? "（未填）"}\n\n`
+      : "";
+
   // 维度 A/B/C：用 LLM 判断
   if (isMinimaxConfigured()) {
     const systemPrompt = `你是一个需求评审意图分析助手。根据一段讨论内容，判断以下三个维度是否被触发。只输出一个 JSON 对象，不要 markdown 代码块，不要其他说明。
@@ -93,9 +106,11 @@ export async function runIntentScan(
   "dimensionC_criticalRisk": { "triggered": true或false, "summary": "若触发，一句话说明：是否有人提出无法绕过的致命风险" },
   "suggestedScript": "若任一维度触发，写一句刘看山吹哨话术，例如：停！关于「高并发」的技术可行性大家吵得最凶，我来调取知乎实锤。否则为空字符串",
   "suggestedKeywords": ["关键词1", "关键词2", "关键词3"]
-}`;
+}
 
-    const userPrompt = `讨论内容：\n\n${discussionText}\n\n请输出上述 JSON。`;
+suggestedKeywords 必须严格基于「发起人需求、目标」与「上述讨论」中的分歧、焦点、疑点提炼，用于后续在知乎检索验证；不要使用与本次讨论无关的通用词（如情绪递进、行为引导、触发条件、需求抽象、用户场景等）。`;
+
+    const userPrompt = `${titleBlock}讨论内容：\n\n${discussionText}\n\n请输出上述 JSON。`;
 
     try {
       const result = await minimaxChat(

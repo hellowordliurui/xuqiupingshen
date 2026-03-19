@@ -93,13 +93,19 @@ export async function GET(request: NextRequest) {
     homeUrl.searchParams.set("logged_in", "1");
     const res = NextResponse.redirect(homeUrl, 303);
     res.headers.set("Cache-Control", "private, no-store, no-cache, max-age=0");
-    res.cookies.set(SESSION_COOKIE, sessionId, {
+    const cookieOptions: Parameters<NextResponse["cookies"]["set"]>[2] = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 30,
       path: "/",
-    });
+    };
+    // 线上若存在 www / 非 www 或多子域，设 COOKIE_DOMAIN 为主域（如 xxx.com），cookie 会设为 .xxx.com，请求都会带上
+    const cookieDomain = process.env.COOKIE_DOMAIN?.trim();
+    if (process.env.NODE_ENV === "production" && cookieDomain) {
+      cookieOptions.domain = cookieDomain.startsWith(".") ? cookieDomain : `.${cookieDomain}`;
+    }
+    res.cookies.set(SESSION_COOKIE, sessionId, cookieOptions);
     return res;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

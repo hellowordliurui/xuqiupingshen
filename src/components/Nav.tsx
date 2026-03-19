@@ -19,10 +19,17 @@ function fetchUser(opts: RequestInit): Promise<UserInfo | null> {
       if (!data.user) return null;
       const sessionUser = data.user as { id: string; secondmeUserId?: string };
       return fetch("/api/user/info", opts)
-        .then((r) => r.json())
+        .then((r) => {
+          if (r.status === 401) {
+            // 401 说明未登录或会话无效，不当作已登录，避免「有头像名字但接口全 401」的假登录
+            return null;
+          }
+          return r.json();
+        })
         .then((info) => {
+          if (info == null) return null;
           if (info.code === 0 && info.data) return info.data as UserInfo;
-          // session 有效但 user/info 失败（如 Second Me 超时）时仍视为已登录，用兜底展示
+          // 非 401 但业务错误（如 Second Me 超时）时用兜底展示，避免误判为未登录
           return {
             userId: sessionUser.id,
             name: "用户",

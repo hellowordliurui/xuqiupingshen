@@ -30,6 +30,14 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ code: 403, message: "您未加入本场辩论" }, { status: 403 });
   }
 
+  const phase = project.reviewPhase ?? "spontaneous";
+  if (phase !== "spontaneous") {
+    return NextResponse.json(
+      { code: 403, message: "刘看山已介入，自发讨论已结束，无法继续发言" },
+      { status: 403 }
+    );
+  }
+
   const role = mySlot.role;
   const hasMyMessage = await prisma.debateMessage.findFirst({
     where: { projectId, userId: session.id },

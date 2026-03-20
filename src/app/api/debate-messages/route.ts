@@ -69,6 +69,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ code: 403, message: "仅本场参与者可发言" }, { status: 403 });
   }
 
+  const phase = project.reviewPhase ?? "spontaneous";
+  if (phase !== "spontaneous") {
+    return NextResponse.json(
+      { code: 403, message: "刘看山已介入，自发讨论已结束，无法继续发言" },
+      { status: 403 }
+    );
+  }
+
   const slotRole = isHost ? "host" : (mySlot!.role as string);
   const senderLabel = roleDisplayLabels[slotRole] ?? slotRole;
 

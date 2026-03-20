@@ -21,6 +21,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ code: 0, data: { entered: false }, message: "仅发起者可调用进入" });
   }
 
+  const phase = project.reviewPhase ?? "spontaneous";
+  if (phase !== "spontaneous") {
+    return NextResponse.json({ code: 0, data: { entered: false }, message: "刘看山已介入，自发讨论已结束，无法继续发言" });
+  }
+
   const hasHostMessage = await prisma.debateMessage.findFirst({
     where: { projectId, slotRole: "host" },
   });

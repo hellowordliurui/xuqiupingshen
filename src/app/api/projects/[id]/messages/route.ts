@@ -64,6 +64,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ code: 403, message: "仅本场参与者可发言" }, { status: 403 });
   }
 
+  const phase = project.reviewPhase ?? "spontaneous";
+  if (phase !== "spontaneous") {
+    return NextResponse.json(
+      { code: 403, message: "刘看山已介入，自发讨论已结束，无法继续发言" },
+      { status: 403 }
+    );
+  }
+
   const slotRole = isHost ? "host" : (mySlot!.role as string);
   const senderLabel = roleDisplayLabels[slotRole] ?? slotRole;
 
@@ -81,7 +89,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // 自发讨论阶段：发言后做意图扫描，若触发吹哨则自动进入实证并拉取知乎、生成蓝图
   let intentCheck: { shouldTrigger: boolean; triggeredBy: string[]; roundCount: number } | undefined;
   let advancedToValidation = false;
-  const phase = project.reviewPhase ?? "spontaneous";
   if (phase === "spontaneous") {
     const allMessagesForScan = await prisma.debateMessage.findMany({
       where: { projectId },

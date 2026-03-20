@@ -7,9 +7,8 @@ import { doFetchZhihuEvidence } from "@/lib/fetch-zhihu-evidence";
 import { doGenerateBlueprint } from "@/lib/generate-blueprint";
 
 /**
- * 详情页加载时调用：若当前为自发讨论阶段且意图扫描触发吹哨，则自动进入实证并拉取知乎、生成蓝图。
- * POST /api/projects/[id]/auto-advance-if-intent
- * 用于把「加入评审」接口中的重逻辑延后到详情页，加快加入响应。
+ * 详情页加载时调用：若当前为自发讨论阶段且意图扫描触发吹哨，则进入实证并拉取知乎、生成蓝图。
+ * 仅做一次意图扫描，不在此补对话；对话由「在详情页的参与者按顺序 take-turn」产生，直到意图触发或达到阈值。
  */
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();

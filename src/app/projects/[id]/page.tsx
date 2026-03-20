@@ -307,7 +307,7 @@ export default function ProjectDetailPage() {
     return () => clearTimeout(fallback);
   }, [id, card?.currentUserInProject, card?.isCurrentUserHost, refreshProject]);
 
-  // 自发讨论阶段且已有讨论时，自动检查意图并在触发时进入实证（仅调用一次，加入评审后的重逻辑在此执行）
+  // 自发讨论阶段且已有讨论时，自动检查意图并在触发时进入实证（仅调用一次）
   useEffect(() => {
     if (!id || !card || autoAdvanceCalledRef.current) return;
     const phase = card.reviewPhase ?? "spontaneous";
@@ -328,6 +328,32 @@ export default function ProjectDetailPage() {
       });
     return () => clearTimeout(fallback);
   }, [id, card, messages.length, refreshProject]);
+
+  // 自发讨论阶段：在详情页的参与者按顺序轮流触发对话（轮到谁谁的分身说一句），直到意图触发或达到条数阈值
+  useEffect(() => {
+    if (!id || !card?.currentUserInProject || (card?.reviewPhase ?? "spontaneous") !== "spontaneous" || messages.length === 0) return;
+    let cancelled = false;
+    setSpeakingOrAdvancing(true);
+    const fallback = setTimeout(() => {
+      if (!cancelled) setSpeakingOrAdvancing(false);
+    }, 25000);
+    fetch(`/api/projects/${id}/take-turn`, { method: "POST", credentials: "include" })
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json.code === 0 && json.data?.tookTurn) refreshProject({ clearSpeaking: true, silent: true });
+        setSpeakingOrAdvancing(false);
+        clearTimeout(fallback);
+      })
+      .catch(() => {
+        if (!cancelled) setSpeakingOrAdvancing(false);
+        clearTimeout(fallback);
+      });
+    return () => {
+      cancelled = true;
+      clearTimeout(fallback);
+    };
+  }, [id, card?.currentUserInProject, card?.reviewPhase, messages.length, refreshProject]);
 
   // 详情页加载后即自动轮询：有「打字中」时短间隔拉取新数据，否则常规间隔，无需手动刷新
   const POLL_MS = 2000;

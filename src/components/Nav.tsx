@@ -131,7 +131,9 @@ function NavInner() {
                 )}
                 <span className="max-w-[8rem] truncate" title={user.name || undefined}>{user.name || "个人中心"}</span>
               </Link>
+              {/* 预取会对 href 发请求；登出是 GET 即生效，预取会导致未点击就清 session */}
               <Link
+                prefetch={false}
                 href="/api/auth/logout"
                 className="text-xs text-geek-gray-light hover:text-zhihu-blue"
               >

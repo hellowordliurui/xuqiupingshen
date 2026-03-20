@@ -1,20 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getSession, getAccessTokenForUser } from "@/lib/auth";
 import { toDebateCard } from "@/lib/arena";
 import { roleDisplayLabels } from "@/types/arena";
-import { runIntentScan } from "@/lib/intent-detection";
-import { doAdvanceToValidation } from "@/lib/advance-to-validation";
-import { doFetchZhihuEvidence } from "@/lib/fetch-zhihu-evidence";
-import { doGenerateBlueprint } from "@/lib/generate-blueprint";
 import { secondmeChat } from "@/lib/secondme";
+import { isSoloParticipantRoom } from "@/lib/debate-guards";
+import { runPostHumanMessageIntentPipeline } from "@/lib/post-message-intent-pipeline";
 
 const MAX_SLOTS = 5;
 const ROLES_ALLOWED: string[] = ["host", "架构师", "算法", "设计师", "运营", "产品", "财务", "法务", "数据", "FE"];
 /** 同一用户连续发言次数上限，超过且无人回复则不再允许发言 */
 const MAX_CONSECUTIVE_SELF = 3;
-const RECENT_MESSAGES_FOR_AVATAR = 25;
+const RECENT_MESSAGES_FOR_AVATAR = 14;
 
 /** 我的项目或全部：GET /api/projects?my=1 仅本人 */
 export async function GET(request: NextRequest) {
@@ -126,6 +124,25 @@ export async function POST(request: NextRequest) {
     const slotRole = isHost ? "host" : (mySlot!.role as string);
     const senderLabel = roleDisplayLabels[slotRole] ?? slotRole;
 
+    if (isSoloParticipantRoom(project)) {
+      const already = await prisma.debateMessage.count({
+        where: {
+          projectId,
+          userId: session.id,
+          kind: { in: ["human", "agent"] },
+        },
+      });
+      if (already >= 1) {
+        return NextResponse.json(
+          {
+            code: 400,
+            message: "目前仅您一人在场，保留一条开场即可；请等待其他成员加入后再继续发言。",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const allMessages = await prisma.debateMessage.findMany({
       where: { projectId },
       orderBy: { createdAt: "asc" },
@@ -184,48 +201,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 自发讨论阶段：发言后做一次意图扫描；若触发吹哨则自动执行刘看山进入实证
-    let intentCheck: { shouldTrigger: boolean; triggeredBy: string[]; roundCount: number; suggestedScript?: string; suggestedKeywords?: string[] } | undefined;
-    let advancedToValidation = false;
     if (phase === "spontaneous") {
-      const allMessagesForScan = await prisma.debateMessage.findMany({
-        where: { projectId },
-        orderBy: { createdAt: "asc" },
-      });
-      const humanOrAgent = allMessagesForScan.filter((m) => m.kind === "human" || m.kind === "agent");
-      const scanMessages = humanOrAgent.map((m) => ({ senderLabel: m.senderLabel, content: m.content, kind: m.kind }));
-      try {
-        const result = await runIntentScan(scanMessages, humanOrAgent.length, {
-          projectTitle: project.title ?? undefined,
-          projectGoal: project.goal ?? undefined,
-        });
-        intentCheck = {
-          shouldTrigger: result.shouldTrigger,
-          triggeredBy: result.triggeredBy,
-          roundCount: result.roundCount,
-          suggestedScript: result.suggestedScript,
-          suggestedKeywords: result.suggestedKeywords,
-        };
-        if (result.shouldTrigger) {
-          await doAdvanceToValidation(projectId, {
-            suggestedScript: result.suggestedScript,
-            suggestedKeywords: result.suggestedKeywords,
-          });
-          advancedToValidation = true;
-          try {
-            await doFetchZhihuEvidence(projectId);
-            try {
-              await doGenerateBlueprint(projectId);
-            } catch {
-              // MiniMax 未配置或生成失败不影响已进入实证
-            }
-          } catch {
-            // 知乎未配置或拉取失败不影响已进入实证
-          }
-        }
-      } catch {
-        // 意图扫描或自动进入实证失败不影响发消息
-      }
+      const title = project.title ?? undefined;
+      const goal = project.goal ?? undefined;
+      after(() =>
+        runPostHumanMessageIntentPipeline(projectId, { projectTitle: title, projectGoal: goal }).catch((err) =>
+          console.warn("[api/projects POST avatar] after intent pipeline", err)
+        )
+      );
     }
 
     return NextResponse.json({
@@ -237,10 +220,8 @@ export async function POST(request: NextRequest) {
         content: message.content,
         slotRole: message.slotRole ?? undefined,
         createdAt: message.createdAt.toISOString(),
-        ...(intentCheck && { intentCheck }),
-        ...(advancedToValidation && { advancedToValidation: true }),
       },
-      message: advancedToValidation ? "已发送，刘看山已自动介入并进入实证环节" : "已发送",
+      message: "已发送",
     });
   }
 

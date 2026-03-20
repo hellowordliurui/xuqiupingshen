@@ -1,14 +1,32 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession, getAccessTokenForUser } from "@/lib/auth";
-import { runIntentScan } from "@/lib/intent-detection";
-import { doAdvanceToValidation } from "@/lib/advance-to-validation";
-import { doFetchZhihuEvidence } from "@/lib/fetch-zhihu-evidence";
-import { doGenerateBlueprint } from "@/lib/generate-blueprint";
 import { secondmeChat } from "@/lib/secondme";
+import { runPostHumanMessageIntentPipeline } from "@/lib/post-message-intent-pipeline";
 import { roleDisplayLabels } from "@/types/arena";
+import { isSoloParticipantRoom } from "@/lib/debate-guards";
 
-const RECENT_MESSAGES_FOR_AVATAR = 25;
+/** 轮动分身时带入的最近条数（略减以降低 SecondMe 延迟） */
+const RECENT_MESSAGES_FOR_TAKE_TURN = 14;
+
+/** 轮询顺序：每个 userId 只出现一次（避免 host 同时在 hostUserId 与 host 席位重复占位） */
+function buildParticipants(project: {
+  hostUserId: string;
+  slots: { userId: string | null; role: string }[];
+}): { userId: string; slotRole: string; senderLabel: string }[] {
+  const seen = new Set<string>();
+  const out: { userId: string; slotRole: string; senderLabel: string }[] = [];
+  const push = (userId: string | null | undefined, slotRole: string, senderLabel: string) => {
+    if (!userId || seen.has(userId)) return;
+    seen.add(userId);
+    out.push({ userId, slotRole, senderLabel });
+  };
+  push(project.hostUserId, "host", roleDisplayLabels["host"] ?? "发起者");
+  for (const s of project.slots) {
+    if (s.userId) push(s.userId, s.role, roleDisplayLabels[s.role] ?? s.role);
+  }
+  return out;
+}
 
 /**
  * 自发讨论阶段：若「轮到」当前用户（按参与人顺序下一棒），则由当前用户分身说一句，并做意图扫描；
@@ -38,18 +56,21 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ code: 0, data: { tookTurn: false }, message: "当前已非自发讨论阶段" });
   }
 
-  const participants: { userId: string; slotRole: string; senderLabel: string }[] = [
-    { userId: project.hostUserId, slotRole: "host", senderLabel: roleDisplayLabels["host"] ?? "发起者" },
-    ...project.slots
-      .filter((s) => s.userId)
-      .map((s) => ({
-        userId: s.userId!,
-        slotRole: s.role,
-        senderLabel: roleDisplayLabels[s.role] ?? s.role,
-      })),
-  ];
-  if (participants.length === 0) {
-    return NextResponse.json({ code: 0, data: { tookTurn: false } });
+  if (isSoloParticipantRoom(project)) {
+    return NextResponse.json({
+      code: 0,
+      data: { tookTurn: false },
+      message: "当前仅您一人在场，请等待他人加入后再轮动讨论",
+    });
+  }
+
+  const participants = buildParticipants(project);
+  if (participants.length < 2) {
+    return NextResponse.json({
+      code: 0,
+      data: { tookTurn: false },
+      message: "至少两名参与者到场后才会自动轮动分身发言",
+    });
   }
 
   const allMessages = await prisma.debateMessage.findMany({
@@ -76,7 +97,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ code: 0, data: { tookTurn: false }, message: "分身未授权或已失效" });
   }
 
-  const recent = allMessages.slice(-RECENT_MESSAGES_FOR_AVATAR);
+  const recent = allMessages.slice(-RECENT_MESSAGES_FOR_TAKE_TURN);
   const contextLines = recent.map((m) => `【${m.senderLabel}】${m.content}`).join("\n");
   const userPrompt = contextLines
     ? `当前讨论记录：\n${contextLines}\n\n需求：${project.title}\n目标：${project.goal}\n\n请以你的身份根据当前讨论继续发言一句（可表态、质疑或补充），不要复述需求原文。`
@@ -93,7 +114,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   }
   if (!content) content = `（${nextParticipant.senderLabel}）`;
 
-  await prisma.debateMessage.create({
+  const created = await prisma.debateMessage.create({
     data: {
       projectId,
       kind: "human",
@@ -104,43 +125,28 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     },
   });
 
-  const newMessages = await prisma.debateMessage.findMany({
-    where: { projectId },
-    orderBy: { createdAt: "asc" },
-  });
-  const newHumanOrAgent = newMessages.filter((m) => m.kind === "human" || m.kind === "agent");
-  const scanMessages = newHumanOrAgent.map((m) => ({ senderLabel: m.senderLabel, content: m.content, kind: m.kind }));
-
-  let advanced = false;
-  try {
-    const result = await runIntentScan(scanMessages, newHumanOrAgent.length, {
-      projectTitle: project.title ?? undefined,
-      projectGoal: project.goal ?? undefined,
-    });
-    if (result.shouldTrigger) {
-      await doAdvanceToValidation(projectId, {
-        suggestedScript: result.suggestedScript,
-        suggestedKeywords: result.suggestedKeywords,
-      });
-      try {
-        await doFetchZhihuEvidence(projectId);
-        try {
-          await doGenerateBlueprint(projectId);
-        } catch {
-          // ignore
-        }
-      } catch {
-        // ignore
-      }
-      advanced = true;
-    }
-  } catch (e) {
-    console.warn("[take-turn] 意图扫描失败", e);
-  }
+  const title = project.title ?? undefined;
+  const goal = project.goal ?? undefined;
+  after(() =>
+    runPostHumanMessageIntentPipeline(projectId, { projectTitle: title, projectGoal: goal }).catch((err) =>
+      console.warn("[take-turn] after intent pipeline", err)
+    )
+  );
 
   return NextResponse.json({
     code: 0,
-    data: { tookTurn: true, advanced },
-    message: advanced ? "已发言，刘看山已介入并进入实证环节" : "已发言",
+    data: {
+      tookTurn: true,
+      /** 立即回显：前端可合并进列表，无需等轮询 */
+      message: {
+        id: created.id,
+        kind: created.kind as "human",
+        senderLabel: created.senderLabel,
+        content: created.content,
+        slotRole: created.slotRole ?? undefined,
+        createdAt: created.createdAt.toISOString(),
+      },
+    },
+    message: "已发言",
   });
 }

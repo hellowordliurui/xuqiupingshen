@@ -25,6 +25,19 @@ export function isReviewPhase(s: string): s is ReviewPhase {
   return REVIEW_PHASES.includes(s as ReviewPhase);
 }
 
+/** 与列表卡片「已结束」一致：蓝图阶段且至少已有一块执行蓝图报告 */
+export function isDebateConcludedOnCard(p: {
+  reviewPhase?: string;
+  reportDeadlySpots?: string | null;
+  reportPitfalls?: string | null;
+  reportPath?: string | null;
+}): boolean {
+  return (
+    p.reviewPhase === "blueprint" &&
+    (!!p.reportDeadlySpots || !!p.reportPitfalls || !!p.reportPath)
+  );
+}
+
 /** 将 DB 的 Project + Slot[] 转成前端的 DebateCard；currentUserId 用于计算 currentUserInProject */
 export function toDebateCard(
   p: {

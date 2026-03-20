@@ -119,7 +119,16 @@ function ArenaContent() {
         <section className="flex flex-col lg:min-h-0">
           <div className="mb-5">
             <h2 className="flex items-center gap-2 text-base font-medium text-geek-gray">
-              <svg className="h-5 w-5 shrink-0 text-zhihu-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg
+                width={20}
+                height={20}
+                className="h-5 w-5 shrink-0 text-zhihu-blue"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7 17L3 9l4-4 4 4 6-8 4 4" />
               </svg>
               寻找灵感碰撞的课题

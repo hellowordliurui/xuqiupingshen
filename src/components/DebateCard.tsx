@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { DebateCard as DebateCardType } from "@/types/arena";
 import { roleDisplayLabels } from "@/types/arena";
+import { isDebateConcludedOnCard } from "@/lib/arena";
 
 interface DebateCardProps {
   card: DebateCardType;
@@ -81,9 +82,8 @@ export function DebateCard({ card, onJoin, compact, currentUserName }: DebateCar
   const router = useRouter();
   const filledCount = card.slots.filter((s) => s.filled).length;
   const total = card.slots.length;
-  const hasConclusion =
-    card.reviewPhase === "blueprint" &&
-    (!!card.reportDeadlySpots || !!card.reportPitfalls || !!card.reportPath);
+  const hasConclusion = isDebateConcludedOnCard(card);
+  const canJoin = !hasConclusion && !card.isFull && !card.currentUserInProject;
   const statusText = hasConclusion
     ? "已结束"
     : card.isFull
@@ -116,11 +116,19 @@ export function DebateCard({ card, onJoin, compact, currentUserName }: DebateCar
     }
   }
 
+  const statusBadge = (
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-geek-gray-light">
+      <span className="h-1.5 w-1.5 rounded-full bg-zhihu-blue" />
+      {statusText}
+    </span>
+  );
+
   return (
-    <article className="rounded-2xl border border-gray-100 bg-white p-6 shadow-md">
-      {/* 需求 / 目标 标签 + 标题 + 状态 */}
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+    <article className="relative rounded-2xl border border-gray-100 bg-white p-6 shadow-md">
+      <div className="absolute right-6 top-6 z-10">{statusBadge}</div>
+      {/* 需求 + 标题：右侧留白避免与右上角状态徽标重叠 */}
+      <div className="mb-4 flex flex-wrap items-start gap-3 pr-[5.5rem] sm:pr-28">
+        <div className="min-w-0 flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-zhihu-blue px-3 py-1 text-xs font-medium text-white">
             需求
           </span>
@@ -128,10 +136,6 @@ export function DebateCard({ card, onJoin, compact, currentUserName }: DebateCar
             {card.title}
           </span>
         </div>
-        <span className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-geek-gray-light">
-          <span className="h-1.5 w-1.5 rounded-full bg-zhihu-blue" />
-          {statusText}
-        </span>
       </div>
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <span
@@ -161,26 +165,10 @@ export function DebateCard({ card, onJoin, compact, currentUserName }: DebateCar
         ))}
       </div>
 
-      {/* 底部按钮 — 已在项目中显示「查看」；未在项目中显示「加入评审」或「查看总结报告」 */}
+      {/* 未结束且未满且未加入 → 加入评审；已结束或已满或已加入 → 仅查看讨论 */}
       {!compact && (
         <div className="flex flex-wrap gap-3">
-          {card.currentUserInProject ? (
-            <Link
-              href={`/projects/${card.id}`}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-zhihu-blue transition hover:bg-zhihu-blue/5"
-            >
-              <span className="text-base leading-none">👁</span>
-              查看讨论
-            </Link>
-          ) : card.isFull ? (
-            <Link
-              href={`/projects/${card.id}`}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-zhihu-blue transition hover:bg-zhihu-blue/5"
-            >
-              <span className="text-base leading-none">👁</span>
-              查看总结报告
-            </Link>
-          ) : (
+          {canJoin ? (
             <button
               type="button"
               disabled={joining || !firstMissingRole}
@@ -190,6 +178,14 @@ export function DebateCard({ card, onJoin, compact, currentUserName }: DebateCar
               <span className="text-base leading-none">💬</span>
               {joining ? "加入中…" : "加入评审"}
             </button>
+          ) : (
+            <Link
+              href={`/projects/${card.id}`}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-zhihu-blue transition hover:bg-zhihu-blue/5"
+            >
+              <span className="text-base leading-none">👁</span>
+              查看讨论
+            </Link>
           )}
         </div>
       )}

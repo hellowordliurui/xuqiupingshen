@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { roleDisplayLabels } from "@/types/arena";
+import { isSoloParticipantRoom } from "@/lib/debate-guards";
 
 /**
  * 讨论记录列表：GET /api/debate-messages?projectId=xxx
@@ -79,6 +80,25 @@ export async function POST(request: NextRequest) {
 
   const slotRole = isHost ? "host" : (mySlot!.role as string);
   const senderLabel = roleDisplayLabels[slotRole] ?? slotRole;
+
+  if (isSoloParticipantRoom(project)) {
+    const already = await prisma.debateMessage.count({
+      where: {
+        projectId,
+        userId: session.id,
+        kind: { in: ["human", "agent"] },
+      },
+    });
+    if (already >= 1) {
+      return NextResponse.json(
+        {
+          code: 400,
+          message: "目前仅您一人在场，保留一条开场即可；请等待其他成员加入后再继续发言。",
+        },
+        { status: 400 }
+      );
+    }
+  }
 
   const message = await prisma.debateMessage.create({
     data: {

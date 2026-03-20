@@ -10,7 +10,6 @@ import type { ReviewPhase } from "@/types/arena";
 /** 对话流上方/内部的统一状态文案 */
 function getFlowStatusText(loading: string | null, flowStatus: "refreshing" | "speaking" | null): string | null {
   if (loading === "zhihu") return "正在拉取知乎数据…";
-  if (loading === "advance") return "正在进入实证环节…";
   if (loading === "blueprint") return "正在生成执行蓝图…";
   if (flowStatus === "refreshing") return "正在获取最新讨论…";
   if (flowStatus === "speaking") return "打字中…";
@@ -41,20 +40,6 @@ function DiscussionSection({
   const phase = (reviewPhase as ReviewPhase) ?? "spontaneous";
   const flowStatusText = getFlowStatusText(loading, flowStatus ?? null);
 
-  async function advanceToValidation() {
-    setLoading("advance");
-    try {
-      const res = await fetch(`/api/projects/${projectId}/advance-to-validation`, { method: "POST", credentials: "include" });
-      const json = await res.json();
-      if (json.code === 0) onPhaseDone?.();
-      else alert(json.message ?? "操作失败");
-    } catch {
-      alert("网络错误，请重试");
-    } finally {
-      setLoading(null);
-    }
-  }
-
   async function fetchZhihuEvidence() {
     setLoading("zhihu");
     try {
@@ -84,7 +69,7 @@ function DiscussionSection({
   }
 
   return (
-    <section className="mb-8 rounded-2xl border border-gray-100 bg-white p-6 shadow-md">
+    <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-md">
       <h2 className="mb-2 text-base font-medium text-geek-gray">讨论记录</h2>
       {justAdvanced && (
         <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
@@ -100,21 +85,11 @@ function DiscussionSection({
           {intentHint.roundCount > 0 && (
             <span className="ml-1">· 当前 {intentHint.roundCount} 轮</span>
           )}
-          <span className="ml-1">，可点击「进入实证环节」由刘看山调取知乎实锤。</span>
+          <span className="ml-1">，达到条件后刘看山将介入并进入实证环节。</span>
         </div>
       )}
-      {canSend && messages.length > 0 && (
+      {canSend && messages.length > 0 && (phase === "zhihu_validation" || phase === "blueprint") && (
         <div className="mb-4 flex flex-wrap gap-2">
-          {phase === "spontaneous" && (
-            <button
-              type="button"
-              onClick={advanceToValidation}
-              disabled={!!loading}
-              className="rounded-lg bg-zhihu-blue px-3 py-1.5 text-sm font-medium text-white transition hover:bg-zhihu-blue-hover disabled:opacity-60"
-            >
-              {loading === "advance" ? "处理中…" : "进入实证环节"}
-            </button>
-          )}
           {phase === "zhihu_validation" && (
             <button
               type="button"
@@ -307,11 +282,13 @@ export default function ProjectDetailPage() {
     return () => clearTimeout(fallback);
   }, [id, card?.currentUserInProject, card?.isCurrentUserHost, refreshProject]);
 
-  // 自发讨论阶段且已有讨论时，自动检查意图并在触发时进入实证（仅调用一次）
+  // 自发讨论阶段且已有讨论时，自动检查意图并在触发时进入实证（仅调用一次）；仅一人占席时不触发，避免单人刷满轮次吹哨
   useEffect(() => {
     if (!id || !card || autoAdvanceCalledRef.current) return;
     const phase = card.reviewPhase ?? "spontaneous";
     if (phase !== "spontaneous" || !messages.length) return;
+    const humanSeats = card.slots.filter((s) => s.filled).length;
+    if (humanSeats < 2) return;
     autoAdvanceCalledRef.current = true;
     setSpeakingOrAdvancing(true);
     const fallback = setTimeout(() => setSpeakingOrAdvancing(false), 60000);
@@ -329,9 +306,11 @@ export default function ProjectDetailPage() {
     return () => clearTimeout(fallback);
   }, [id, card, messages.length, refreshProject]);
 
-  // 自发讨论阶段：在详情页的参与者按顺序轮流触发对话（轮到谁谁的分身说一句），直到意图触发或达到条数阈值
+  // 自发讨论阶段：至少两名真人占席时才轮动分身；仅发起者一人时不调用 take-turn，避免重复独白
   useEffect(() => {
     if (!id || !card?.currentUserInProject || (card?.reviewPhase ?? "spontaneous") !== "spontaneous" || messages.length === 0) return;
+    const humanSeats = card.slots.filter((s) => s.filled).length;
+    if (humanSeats < 2) return;
     let cancelled = false;
     setSpeakingOrAdvancing(true);
     const fallback = setTimeout(() => {
@@ -341,8 +320,15 @@ export default function ProjectDetailPage() {
       .then((r) => r.json())
       .then((json) => {
         if (cancelled) return;
-        if (json.code === 0 && json.data?.tookTurn) refreshProject({ clearSpeaking: true, silent: true });
-        setSpeakingOrAdvancing(false);
+        if (json.code === 0 && json.data?.tookTurn) {
+          const m = json.data.message as DebateMessageItem | undefined;
+          if (m?.id) {
+            setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
+          }
+          void refreshProject({ clearSpeaking: true, silent: true });
+        } else {
+          setSpeakingOrAdvancing(false);
+        }
         clearTimeout(fallback);
       })
       .catch(() => {
@@ -356,12 +342,12 @@ export default function ProjectDetailPage() {
   }, [id, card?.currentUserInProject, card?.reviewPhase, messages.length, refreshProject]);
 
   // 详情页加载后即自动轮询：有「打字中」时短间隔拉取新数据，否则常规间隔，无需手动刷新
-  const POLL_MS = 2000;
-  const POLL_MS_WHEN_SPEAKING = 1200;
+  const POLL_MS = 1600;
+  const POLL_MS_WHEN_SPEAKING = 450;
   useEffect(() => {
     if (!id) return;
-    // 进入详情页后先尽快拉一次（与初始 load 并行，谁先回来谁先渲染）
-    const first = setTimeout(() => refreshProject({ silent: true }), 600);
+    // 进入详情页后尽快拉一次，缩短与 take-turn 回显的间隔
+    const first = setTimeout(() => refreshProject({ silent: true }), 120);
     const interval = speakingOrAdvancing ? POLL_MS_WHEN_SPEAKING : POLL_MS;
     const timer = setInterval(() => refreshProject({ silent: true }), interval);
     return () => {
@@ -393,7 +379,7 @@ export default function ProjectDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-8 pb-24">
+    <div className="mx-auto max-w-6xl px-6 py-8 pb-24">
       <Link
         href="/"
         className="mb-6 inline-block text-sm font-medium text-zhihu-blue hover:underline"
@@ -401,70 +387,74 @@ export default function ProjectDetailPage() {
         ← 返回广场
       </Link>
 
-      {/* 项目卡片摘要（只读，不展示底部按钮） */}
-      <div className="mb-8">
-        <DebateCard card={card} compact currentUserName={currentUserName} />
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-10 lg:items-start">
+        {/* 左侧：项目卡片摘要（只读，不展示底部按钮） */}
+        <div className="min-w-0">
+          <DebateCard card={card} compact currentUserName={currentUserName} />
+        </div>
+
+        {/* 右侧：讨论记录 + 总结报告 */}
+        <div className="flex min-w-0 flex-col gap-6">
+          <DiscussionSection
+            projectId={card.id}
+            messages={messages}
+            canSend={!!card.currentUserInProject}
+            onSent={() => refreshProject()}
+            reviewPhase={card.reviewPhase}
+            onPhaseDone={() => refreshProject()}
+            flowStatus={refreshing ? "refreshing" : speakingOrAdvancing ? "speaking" : null}
+          />
+
+          {/* 刘看山 · 总结报告（有报告时展示三块，所有用户均可查看） */}
+          <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-md">
+            <h2 className="mb-1 text-base font-medium text-geek-gray">
+              刘看山 · 总结报告
+            </h2>
+            <p className="mb-4 text-xs text-geek-gray-light">所有用户均可查看最终结论</p>
+            {card.reportDeadlySpots || card.reportPitfalls || card.reportPath ? (
+              <div className="space-y-6">
+                {card.reportDeadlySpots && (
+                  <div>
+                    <h3 className="mb-2 text-sm font-medium text-zhihu-blue">致命死角</h3>
+                    <div className="whitespace-pre-wrap rounded-xl bg-gray-50/80 px-4 py-3 text-sm text-geek-gray">
+                      {card.reportDeadlySpots}
+                    </div>
+                  </div>
+                )}
+                {card.reportPitfalls && (
+                  <div>
+                    <h3 className="mb-2 text-sm font-medium text-zhihu-blue">避坑指南</h3>
+                    <div className="whitespace-pre-wrap rounded-xl bg-gray-50/80 px-4 py-3 text-sm text-geek-gray">
+                      {card.reportPitfalls}
+                    </div>
+                  </div>
+                )}
+                {card.reportPath && (
+                  <div>
+                    <h3 className="mb-2 text-sm font-medium text-zhihu-blue">修正路径</h3>
+                    <div className="whitespace-pre-wrap rounded-xl bg-gray-50/80 px-4 py-3 text-sm text-geek-gray">
+                      {card.reportPath}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div
+                className="min-h-[100px] rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 py-8 px-4 text-center text-sm text-geek-gray-light"
+                style={{ borderColor: "rgba(0, 132, 255, 0.15)" }}
+              >
+                {card.reviewPhase === "blueprint"
+                  ? "暂无报告（自动生成未完成时可点击「重新生成执行蓝图」）。"
+                  : card.reviewPhase === "zhihu_validation"
+                    ? "实证证据已就绪，执行蓝图将自动生成；生成后所有用户可在此查看。"
+                    : card.isFull
+                      ? "已满员，进入实证后将自动拉取证据并生成执行蓝图。"
+                      : "完成自发讨论并进入实证后，将自动拉取知乎证据并生成执行蓝图，所有用户可查看最终结论。"}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
-
-      {/* 讨论记录（阶段操作嵌入此处） */}
-      <DiscussionSection
-        projectId={card.id}
-        messages={messages}
-        canSend={!!card.currentUserInProject}
-        onSent={() => refreshProject()}
-        reviewPhase={card.reviewPhase}
-        onPhaseDone={() => refreshProject()}
-        flowStatus={refreshing ? "refreshing" : speakingOrAdvancing ? "speaking" : null}
-      />
-
-      {/* 刘看山 · 总结报告（有报告时展示三块，所有用户均可查看） */}
-      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-md">
-        <h2 className="mb-1 text-base font-medium text-geek-gray">
-          刘看山 · 总结报告
-        </h2>
-        <p className="mb-4 text-xs text-geek-gray-light">所有用户均可查看最终结论</p>
-        {card.reportDeadlySpots || card.reportPitfalls || card.reportPath ? (
-          <div className="space-y-6">
-            {card.reportDeadlySpots && (
-              <div>
-                <h3 className="mb-2 text-sm font-medium text-zhihu-blue">致命死角</h3>
-                <div className="whitespace-pre-wrap rounded-xl bg-gray-50/80 px-4 py-3 text-sm text-geek-gray">
-                  {card.reportDeadlySpots}
-                </div>
-              </div>
-            )}
-            {card.reportPitfalls && (
-              <div>
-                <h3 className="mb-2 text-sm font-medium text-zhihu-blue">避坑指南</h3>
-                <div className="whitespace-pre-wrap rounded-xl bg-gray-50/80 px-4 py-3 text-sm text-geek-gray">
-                  {card.reportPitfalls}
-                </div>
-              </div>
-            )}
-            {card.reportPath && (
-              <div>
-                <h3 className="mb-2 text-sm font-medium text-zhihu-blue">修正路径</h3>
-                <div className="whitespace-pre-wrap rounded-xl bg-gray-50/80 px-4 py-3 text-sm text-geek-gray">
-                  {card.reportPath}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div
-            className="min-h-[100px] rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 py-8 px-4 text-center text-sm text-geek-gray-light"
-            style={{ borderColor: "rgba(0, 132, 255, 0.15)" }}
-          >
-            {card.reviewPhase === "blueprint"
-              ? "暂无报告（自动生成未完成时可点击「重新生成执行蓝图」）。"
-              : card.reviewPhase === "zhihu_validation"
-                ? "实证证据已就绪，执行蓝图将自动生成；生成后所有用户可在此查看。"
-                : card.isFull
-                  ? "已满员，进入实证后将自动拉取证据并生成执行蓝图。"
-                  : "完成自发讨论并进入实证后，将自动拉取知乎证据并生成执行蓝图，所有用户可查看最终结论。"}
-          </div>
-        )}
-      </section>
     </div>
   );
 }

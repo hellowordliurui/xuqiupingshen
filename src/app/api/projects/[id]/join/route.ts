@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { toDebateCard, MAX_ROOM_SIZE } from "@/lib/arena";
+import { toDebateCard, MAX_ROOM_SIZE, isDebateConcludedOnCard } from "@/lib/arena";
 import { isSlotRole } from "@/lib/arena";
 
 /**
@@ -29,6 +29,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     include: { slots: true },
   });
   if (!project) return NextResponse.json({ code: 404, message: "项目不存在" }, { status: 404 });
+
+  if (isDebateConcludedOnCard(project)) {
+    return NextResponse.json({ code: 403, message: "讨论已结束，无法加入" }, { status: 403 });
+  }
 
   const filledCount = project.slots.filter((s) => s.userId).length;
   if (filledCount >= MAX_ROOM_SIZE) {

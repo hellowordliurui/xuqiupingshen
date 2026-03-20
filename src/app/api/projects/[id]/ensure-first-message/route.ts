@@ -7,7 +7,7 @@ const RECENT_MESSAGES_FOR_AVATAR = 25;
 
 /**
  * 进入详情页后根据当前讨论上下文生成当前用户的首条发言（若尚未发言）。
- * 仅一轮讨论，不生成第二轮；吹哨/刘看山由意图识别（4 条兜底）触发。
+ * 仅一轮讨论，不生成第二轮；吹哨/刘看山由意图识别（条数兜底阈值见 ROUND_THRESHOLD）触发。
  * POST /api/projects/[id]/ensure-first-message
  */
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

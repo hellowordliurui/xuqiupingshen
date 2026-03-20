@@ -5,6 +5,7 @@ import { runIntentScan } from "@/lib/intent-detection";
 import { doAdvanceToValidation } from "@/lib/advance-to-validation";
 import { doFetchZhihuEvidence } from "@/lib/fetch-zhihu-evidence";
 import { doGenerateBlueprint } from "@/lib/generate-blueprint";
+import { isSoloParticipantRoom } from "@/lib/debate-guards";
 
 /**
  * 详情页加载时调用：若当前为自发讨论阶段且意图扫描触发吹哨，则进入实证并拉取知乎、生成蓝图。
@@ -30,6 +31,14 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   const phase = project.reviewPhase ?? "spontaneous";
   if (phase !== "spontaneous") {
     return NextResponse.json({ code: 0, data: { advanced: false }, message: "当前已非自发讨论阶段" });
+  }
+
+  if (isSoloParticipantRoom(project)) {
+    return NextResponse.json({
+      code: 0,
+      data: { advanced: false },
+      message: "至少两名参与者到场后才会根据讨论自动进入实证",
+    });
   }
 
   const allMessagesForScan = await prisma.debateMessage.findMany({

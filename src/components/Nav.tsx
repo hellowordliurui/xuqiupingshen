@@ -99,7 +99,18 @@ function NavInner() {
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zhihu-blue/60 bg-gradient-to-br from-zhihu-blue/15 to-white shadow-sm"
             style={{ borderColor: "rgba(0, 132, 255, 0.4)" }}
           >
-            <svg className="h-5 w-5 text-zhihu-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width={20}
+              height={20}
+              className="h-5 w-5 shrink-0 text-zhihu-blue"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
               <path d="M12 2l2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6z" />
               <circle cx="7" cy="17" r="2" fill="currentColor" />
             </svg>
@@ -162,7 +173,18 @@ function NavFallback() {
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zhihu-blue/60 bg-gradient-to-br from-zhihu-blue/15 to-white shadow-sm"
             style={{ borderColor: "rgba(0, 132, 255, 0.4)" }}
           >
-            <svg className="h-5 w-5 text-zhihu-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width={20}
+              height={20}
+              className="h-5 w-5 shrink-0 text-zhihu-blue"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
               <path d="M12 2l2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6z" />
               <circle cx="7" cy="17" r="2" fill="currentColor" />
             </svg>

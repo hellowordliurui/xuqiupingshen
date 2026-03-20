@@ -81,7 +81,7 @@ export async function secondmeApi<T>(
 }
 
 /**
- * 以用户 AI 分身进行对话，读流式响应并返回完整回复文本。
+ * 以用户 AI 分身进行对话，读流式响应直至结束，返回完整回复文本。
  * 文档：POST /api/secondme/chat/stream，权限 scope: chat
  */
 export async function secondmeChat(
@@ -117,26 +117,26 @@ export async function secondmeChat(
   let full = "";
   let buffer = "";
   try {
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (line.startsWith("data: ")) {
-        const payload = line.slice(6).trim();
-        if (payload === "[DONE]") return full.trim();
-        try {
-          const j = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: string } }> };
-          const content = j.choices?.[0]?.delta?.content;
-          if (typeof content === "string") full += content;
-        } catch {
-          // ignore non-JSON lines
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const payload = line.slice(6).trim();
+          if (payload === "[DONE]") return full.trim();
+          try {
+            const j = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: string } }> };
+            const content = j.choices?.[0]?.delta?.content;
+            if (typeof content === "string") full += content;
+          } catch {
+            // ignore non-JSON lines
+          }
         }
       }
     }
-  }
   } finally {
     reader.releaseLock();
   }

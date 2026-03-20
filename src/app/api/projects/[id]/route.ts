@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { toDebateCard } from "@/lib/arena";
@@ -86,6 +87,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     },
   });
   } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P1001") {
+      return NextResponse.json(
+        {
+          code: 503,
+          message: "数据库暂时无法连接，请检查网络、DATABASE_URL，或 Supabase 项目是否暂停。",
+        },
+        { status: 503 }
+      );
+    }
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[GET /api/projects/[id]]", e);
     return NextResponse.json(
